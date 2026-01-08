@@ -123,6 +123,10 @@ function App() {
     handleAuthLost('Logged out');
   };
 
+  const reauth = () => {
+    window.location.href = apiUrl('/api/auth/login');
+  };
+
   const panelDevFlag = (typeof process !== 'undefined' && (process as any).env?.VITE_PANEL_DEV) || (window as any).__PANEL_DEV__;
   const devMode = typeof window !== 'undefined' && (window.location.search.includes('dev=1') || panelDevFlag === 'true' || panelDevFlag === true);
 
@@ -393,7 +397,12 @@ function App() {
         </div>
         <div className="header-actions">
           {devMode && <span className="pill pill-dev">Dev mode</span>}
-          {!devMode && session && <button className="ghost" disabled={loading} onClick={logout}>Logout</button>}
+          {!devMode && session && (
+            <>
+              <button className="ghost" disabled={loading} onClick={reauth}>Re-auth</button>
+              <button className="ghost" disabled={loading} onClick={logout}>Logout</button>
+            </>
+          )}
           <button className="ghost" disabled={loading} onClick={() => refresh('Synced')}>Refresh</button>
         </div>
       </header>
