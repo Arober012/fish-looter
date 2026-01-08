@@ -1,0 +1,58 @@
+Fish Looter Chat Commands
+=========================
+
+Viewer commands
+- !cast                          : Cast your line (start fishing).
+- !reel                          : Reel in when you have a tug.
+- !inventory                     : Show your inventory in the panel.
+- !store                         : Open the shop in the panel.
+- !buy <item> [count]            : Buy an item from the store.
+- !sell <item> [count]           : Sell an item from your inventory.
+- !use <item> ...                : Use an item/token (bait, charms, scrolls, etc.).
+- !upgrades                      : View upgrade options in the panel.
+- !level                         : Show your current level/xp.
+- !theme                         : Show current theme (see list below to switch, mod-only).
+- !save                          : Force-save your progress.
+
+Mod/Broadcaster commands
+- !event start <xp|gold|double|luck> [rarity] [minutes<=10] [amount]
+        xp/gold: amount as percent (e.g., 50%, up to 500%).
+        double: amount as stacks (x1-x3 for +1 to +3 bonus rolls).
+        luck: amount as percent (1-150%); optional rarity targets only that rarity bucket (e.g., rare only). Omit rarity to affect all rarities.
+        examples:
+            !event start luck rare 3 30%    -> Luck +30% (rare only) for 3 minutes.
+            !event start luck mythic 2 120% -> Luck +120% (mythic only) for 2 minutes.
+            !event start xp 5 200%         -> XP +200% for 5 minutes.
+            !event start double x3 5       -> Double Catch +3 rolls for 5 minutes.
+            !event start xp 5 200%         -> XP +200% for 5 minutes.
+            !event start double x3 5       -> Double Catch +3 rolls for 5 minutes.
+- !event stop [id]               : Stop one event by id, or all if no id.
+- !cooldown                      : Show current per-user cooldown (cast/reel/chat commands share it).
+- !cooldown <seconds 5-300>      : Set per-user cooldown live (affects panel + chat).
+- !cooldown reset                : Reset cooldown to default (35s).
+- !reset-profile [username]      : Reset a player profile to defaults (mod-only; use only when necessary/testing).
+- !theme <name>                  : Switch overlay theme (names listed below).
+- !commands enable|disable <cmd> : Toggle a command (if commands config is present).
+- !setbiome <name>               : Move channel biome (if enabled in config).
+(Note: some admin commands may be disabled unless configured. There is currently no !give command for gold/xp.)
+
+Theme names (for !theme)
+- default       : Midnight Cove
+- tropical      : Tropical Bay
+- sunset        : Harbor Sunset
+- glacier       : Glacier Dawn
+
+Global event examples
+- !event start xp 50% 5          : XP +50% for 5 minutes.
+- !event start gold 80% 8        : Gold +80% for 8 minutes.
+- !event start double x3 5       : Double-catch with +3 bonus rolls for 5 minutes.
+- !event start luck rare 25% 6   : Luck +25% for rare-only catches for 6 minutes.
+- !event stop                    : Stop all events.
+
+Notes
+- Multiple events stack: XP and Gold add together; Double stacks add bonus rolls (max +3). Luck stacks and can be targeted to a minimum rarity.
+- Boosts apply to everyone (viewers, mods, broadcaster) once started.
+- Boost icons appear in the overlay when events are active.
+- Catalog-driven UI: theme colors and boost icons can be set in data/catalog.json (ui section) and picked up on server restart (no panel re-upload needed).
+- Per-user command cooldown defaults to 35s and applies to chat and panel quick actions; mods can adjust live with !cooldown.
+- Unknown chat commands are ignored (no error message) to avoid overlay noise.

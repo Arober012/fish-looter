@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "esnext",
+    "moduleResolution": "nodenext",
+    "jsx": "react-jsx"
+  },
+  "include": [
+    "src/extension-panel/**/*"
+  ]
+}

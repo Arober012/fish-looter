@@ -1,0 +1,270 @@
+{
+  "version": "1.1.0",
+  "updatedAt": 1762300000000,
+  "materials": [
+    { "id": "tide-shard", "name": "Tide Shard" },
+    { "id": "ember-fragment", "name": "Ember Fragment" },
+    { "id": "abyssal-ink", "name": "Abyssal Ink" },
+    { "id": "frost-crystal", "name": "Frost Crystal" },
+    { "id": "astral-fiber", "name": "Astral Fiber" },
+    { "id": "cosmic-dust", "name": "Cosmic Dust" }
+  ],
+  "essences": [
+    { "id": "spark-essence", "name": "Spark Essence", "rarityBonus": 0.05, "valueBonus": 0.025, "description": "+5% rarity, +2.5% value" },
+    { "id": "echo-essence", "name": "Echo Essence", "rarityBonus": 0.08, "valueBonus": 0.04, "description": "+8% rarity, +4% value" },
+    { "id": "mythic-essence", "name": "Mythic Essence", "rarityBonus": 0.12, "valueBonus": 0.06, "description": "+12% rarity, +6% value" }
+  ],
+  "recipes": [
+    {
+      "id": "crafting-booster-kit",
+      "name": "Crafting Booster Kit",
+      "description": "Improves your next craft.",
+      "costs": { "tide-shard": 2, "ember-fragment": 1 },
+      "grants": { "name": "Crafting Booster Kit", "rarity": "epic", "type": "token", "value": 0, "description": "Improves your next craft." }
+    },
+    {
+      "id": "enchanters-spark",
+      "name": "Enchanter's Spark",
+      "description": "Guarantees a minor enchant success.",
+      "costs": { "ember-fragment": 2, "abyssal-ink": 1, "frost-crystal": 1 },
+      "grants": { "name": "Enchanter's Spark", "rarity": "legendary", "type": "token", "value": 0, "description": "Guarantees a minor enchant success." }
+    },
+    {
+      "id": "tide-luck-charm",
+      "name": "Tide Luck Charm",
+      "description": "Boost rarity for 3 minutes.",
+      "costs": { "tide-shard": 3, "astral-fiber": 1 },
+      "grants": { "name": "Luck Charm", "rarity": "rare", "type": "token", "value": 0, "description": "Boost rarity for 3 minutes." }
+    },
+    {
+      "id": "synthesize-cosmic-dust",
+      "name": "Synthesize Cosmic Dust",
+      "description": "Refine high-tier shards into Cosmic Dust.",
+      "costs": { "astral-fiber": 6, "frost-crystal": 5, "abyssal-ink": 4 },
+      "grantsMaterials": { "cosmic-dust": 1 }
+    }
+  ],
+  "items": [
+    { "key": "bait-basic", "name": "Bag of Bait", "cost": 20, "rarity": "common", "value": 12, "description": "Adds a guaranteed common catch when used.", "type": "bait" },
+    { "key": "bait-shiny", "name": "Shiny Lure", "cost": 90, "rarity": "rare", "value": 38, "description": "Slightly boosts rare+ odds for your next cast.", "type": "bait" },
+    { "key": "bait-mystic", "name": "Mystic Bobber", "cost": 160, "rarity": "epic", "value": 65, "description": "Greatly boosts epic+ odds for your next cast.", "type": "bait" },
+    { "key": "bait-aurora", "name": "Aurora Float", "cost": 280, "rarity": "mythic", "value": 120, "description": "Massively increases mythic odds for one cast.", "type": "bait" },
+    { "key": "bag-upgrade", "name": "Inventory Expansion", "cost": 120, "rarity": "rare", "value": 0, "description": "Increase inventory space by +5 (max 30).", "type": "item" },
+    { "key": "hook-stabilizer", "name": "Hook Stabilizer", "cost": 35, "rarity": "common", "value": 0, "description": "Forgives one early reel on your next cast.", "type": "token" },
+    { "key": "tide-token", "name": "Tide Token", "cost": 70, "rarity": "uncommon", "value": 0, "description": "Next catch is guaranteed uncommon+.", "type": "token" },
+    { "key": "gleam-polish", "name": "Gleam Polish", "cost": 110, "rarity": "rare", "value": 0, "description": "Next catch value +40%.", "type": "token" },
+    { "key": "scholars-note", "name": "Scholar's Note", "cost": 80, "rarity": "uncommon", "value": 0, "description": "Next catch XP +50%.", "type": "token" },
+    { "key": "echo-reel", "name": "Echo Reel", "cost": 140, "rarity": "rare", "value": 0, "description": "Bonus catch after next successful reel (one tier lower).", "type": "token" },
+    { "key": "luck-charm", "name": "Luck Charm", "cost": 110, "rarity": "rare", "value": 0, "description": "Boost rarity weights for 3 minutes.", "type": "token" },
+    { "key": "traders-mark", "name": "Trader's Mark", "cost": 85, "rarity": "uncommon", "value": 0, "description": "Boost item value by 15% for 5 minutes.", "type": "token" },
+    { "key": "waypoint-charter", "name": "Waypoint Charter", "cost": 170, "rarity": "rare", "value": 0, "description": "Sail down one biome tier.", "type": "token" },
+    { "key": "survey-beacon", "name": "Survey Beacon", "cost": 230, "rarity": "epic", "value": 0, "description": "Greatly improves next catch odds and value.", "type": "token" },
+    { "key": "chest-key", "name": "Chest Key", "cost": 120, "rarity": "rare", "value": 0, "description": "Next chest opens one rarity tier higher.", "type": "token" },
+    { "key": "prospectors-lens", "name": "Prospector's Lens", "cost": 210, "rarity": "epic", "value": 0, "description": "Next chest guarantees epic+ loot.", "type": "token" },
+    { "key": "crafting-booster", "name": "Crafting Booster Kit", "cost": 280, "rarity": "epic", "value": 0, "description": "Improves your next craft (requires crafting unlocked).", "type": "token" },
+    { "key": "enchanters-spark", "name": "Enchanter's Spark", "cost": 340, "rarity": "legendary", "value": 0, "description": "Guarantees a minor enchant success (requires enchantments unlocked).", "type": "token" },
+    { "key": "scroll-common", "name": "Scroll of Looting (Common)", "cost": 1200, "rarity": "common", "value": 0, "description": "Prestige 4+: add a common custom loot item.", "type": "scroll" },
+    { "key": "scroll-rare", "name": "Scroll of Looting (Rare)", "cost": 2400, "rarity": "rare", "value": 0, "description": "Prestige 4+: add a rare custom loot item.", "type": "scroll" },
+    { "key": "scroll-epic", "name": "Scroll of Looting (Epic/Mythic)", "cost": 4800, "rarity": "epic", "value": 0, "description": "Prestige 4+: add an epic or mythic custom loot item.", "type": "scroll" },
+    { "key": "scroll-legendary", "name": "Scroll of Looting (Legendary)", "cost": 8200, "rarity": "legendary", "value": 0, "description": "Prestige 4+: add a legendary custom loot item.", "type": "scroll" },
+    { "key": "skin-carbon", "name": "Carbon Pro Skin", "cost": 120, "rarity": "rare", "value": 0, "description": "Light, matte carbon fiber. (req. lvl 5)", "type": "skin", "minLevel": 5, "imageUrl": "/skins/carbon_rod.png" },
+    { "key": "skin-neon", "name": "Neon Flux Skin", "cost": 180, "rarity": "epic", "value": 0, "description": "Glowing accents for night runs. (req. lvl 8)", "type": "skin", "minLevel": 8, "imageUrl": "/skins/neon_rod.png" },
+    { "key": "skin-aurora", "name": "Aurora Drift Skin", "cost": 260, "rarity": "legendary", "value": 0, "description": "Iridescent shimmer in motion. (req. lvl 12)", "type": "skin", "minLevel": 12, "imageUrl": "/skins/aura_rod.png" }
+  ],
+  "upgrades": [
+    { "key": "rod", "name": "Reinforced Rod", "cost": 60, "maxLevel": 1, "stat": "value", "description": "+20% item value for 3 minutes (max 3 per 12h)." },
+    { "key": "lure", "name": "Lucky Lure", "cost": 80, "maxLevel": 5, "stat": "rarity", "description": "Better bite quality: +6% higher rarity odds per level." },
+    { "key": "journal", "name": "Fishing Journal", "cost": 50, "maxLevel": 1, "stat": "xp", "description": "+15% XP for 5 minutes (max 3 per 12h)." }
+  ],
+  "skins": [
+    { "id": "classic", "name": "Classic Oak", "levelReq": 1, "cost": 0, "rarity": "common", "description": "Reliable wood finish.", "imageUrl": "/skins/wooden_rod.png" },
+    { "id": "carbon", "name": "Carbon Pro", "levelReq": 5, "cost": 120, "rarity": "rare", "description": "Light, matte carbon fiber.", "imageUrl": "/skins/carbon_rod.png" },
+    { "id": "neon", "name": "Neon Flux", "levelReq": 8, "cost": 180, "rarity": "epic", "description": "Glowing accents for night runs.", "imageUrl": "/skins/neon_rod.png" },
+    { "id": "aurora", "name": "Aurora Drift", "levelReq": 12, "cost": 260, "rarity": "legendary", "description": "Iridescent shimmer in motion.", "imageUrl": "/skins/aura_rod.png" }
+  ],
+  "biomes": [
+    {
+      "id": "cove",
+      "name": "Midnight Cove",
+      "tier": 1,
+      "rarityConfigs": [
+        { "rarity": "common", "weight": 52, "valueRange": [5, 12], "xp": 6 },
+        { "rarity": "uncommon", "weight": 26, "valueRange": [12, 22], "xp": 13 },
+        { "rarity": "rare", "weight": 12, "valueRange": [24, 40], "xp": 24 },
+        { "rarity": "epic", "weight": 6, "valueRange": [42, 70], "xp": 40 },
+        { "rarity": "legendary", "weight": 3, "valueRange": [72, 110], "xp": 60 },
+        { "rarity": "mythic", "weight": 1, "valueRange": [120, 220], "xp": 95 },
+        { "rarity": "relic", "weight": 0.2, "valueRange": [240, 420], "xp": 150 }
+      ],
+      "lootTable": {
+        "common": ["Minnow", "Tin Can", "Old Boot", "Rusty Hook", "Soggy Note", "Pebbles", "Common Chest", "Wet Sock", "Sand Dollar", "Hay bale", "Shiny Rock", "Guppy", "Tiny Crab", "Turtle Shell"],
+        "uncommon": ["Sunfish", "Carp", "Seaweed Bundle", "Uncommon Chest", "Wooden Chest", "Message Bottle", "Lucky Token", "Lobster Claw", "Crab Leg", "Copper Ring", "Silver Fish Hook", "Starfish", "Clam Shell", "Coral Fragment", "Driftwood Piece", "Fishing Bobber", "Anchor Charm", "Fishing Line Spool", "Captain's Hat", "Captain's Log"],
+        "rare": ["Salmon", "Bass", "Catfish", "Pearl Oyster", "Silver Locket", "Old Map Fragment", "Hammerhead Shark Tooth", "Dolphin Fin", "Dolphin", "Tortoise", "Sea Turtle", "Peanut Brittle", "Honeycomb", "Hard Hat"],
+        "epic": ["Golden Trout", "Swordfish", "Ancient Coin", "Opal Oyster", "Treasure Map", "Enchanted Compass", "Mythic Chest", "Pirate's Hat", "Pirate's Cutlass", "First Mate's Log", "Navigator's Sextant", "Silver Trout", "Stingray", "Manta Ray", "Clown Fish", "Blowfish", "Jellyfish", "Eeel", "Coral Crown", "Pearl Necklace", "Captain's Spyglass", "Ship in a Bottle"],
+        "legendary": ["Kraken Scale", "Dragon Koi", "Phoenix Feather", "Gold Bar", "Jeweled Crown", "Legendary Chest", "Ocean's Heart", "Trident Fragment", "Poseidon's Trident", "Siren's Songbook", "Mermaid's Comb", "Coral Scepter", "Triton's Shell", "Sea Serpent Fang", "Tuna", "Marlin", "Barracuda", "Giant Squid"],
+        "mythic": ["Celestial Carp", "Leviathan Tooth", "Aurora Pearl", "Starlit Relic", "Forgotten Scepter", "Crown of Tides", "Neptune's Glory", "Eternal Coral", "Mythic Pearl", "Starfish Crown", "Ocean's Embrace", "Galactic Shell", "Cosmic Coral", "Mythic Koi", "Astral Fin", "Mythic Trident", "Mega Squid", "Mega Shark", "Megalodon", "Great White Shark", "Diamond Shark", "Rainbow Koi", "Mythic Leviathan", "Mythic Dragon Koi", "Mythic Phoenix Koi", "Mythic Celestial Koi", "Mythic Starlit Koi", "Glowing Gem", "Black Pearl", "Kraken Tentacle", "Poseidon's Crown", "Kraken's Eye", "Trident of the Seas", "Neptune's Trident", "The Kraken King"],
+        "relic": ["Prismatic Relic", "Forgotten Anchor Stone", "Eternal Wave Sigil"]
+      },
+      "goldMultiplier": 1,
+      "xpMultiplier": 1,
+      "imageUrl": "/biomes/midnight_cove.png"
+    },
+    {
+      "id": "ember-reef",
+      "name": "Ember Reef",
+      "tier": 2,
+      "rarityConfigs": [
+        { "rarity": "common", "weight": 42, "valueRange": [12, 26], "xp": 10 },
+        { "rarity": "uncommon", "weight": 24, "valueRange": [22, 40], "xp": 18 },
+        { "rarity": "rare", "weight": 15, "valueRange": [42, 80], "xp": 32 },
+        { "rarity": "epic", "weight": 9, "valueRange": [70, 120], "xp": 55 },
+        { "rarity": "legendary", "weight": 6, "valueRange": [110, 180], "xp": 85 },
+        { "rarity": "mythic", "weight": 4, "valueRange": [160, 280], "xp": 130 },
+        { "rarity": "relic", "weight": 0.35, "valueRange": [320, 520], "xp": 200 }
+      ],
+      "lootTable": {
+        "common": ["Glass Minnow", "Coral Chip", "Charred Driftwood", "Cinder Shrimp", "Glowing Kelp", "Coal Pebble"],
+        "uncommon": ["Fire Guppy", "Amber Clam", "Heatfin", "Brass Key", "Seared Chest", "Sun Coin"],
+        "rare": ["Blazefin Tuna", "Molten Lobster", "Gilded Anchor", "Smoldering Relic"],
+        "epic": ["Phoenix Snapper", "Lava Eel", "Cinder Crown", "Enchanted Compass", "Ember Chest"],
+        "legendary": ["Ifrit Ray", "Solar Dragonet", "Molten Obelisk", "Inferno Pearl"],
+        "mythic": ["Ashen Leviathan", "Star Ember", "Crown of Cinders"],
+        "relic": ["Emberheart Core", "Cinder Relic"]
+      },
+      "goldMultiplier": 1.2,
+      "xpMultiplier": 1.15,
+      "imageUrl": "/biomes/ember_reef.png"
+    },
+    {
+      "id": "abyssal-gulf",
+      "name": "Abyssal Gulf",
+      "tier": 3,
+      "rarityConfigs": [
+        { "rarity": "common", "weight": 36, "valueRange": [14, 30], "xp": 12 },
+        { "rarity": "uncommon", "weight": 24, "valueRange": [28, 48], "xp": 20 },
+        { "rarity": "rare", "weight": 16, "valueRange": [55, 95], "xp": 38 },
+        { "rarity": "epic", "weight": 12, "valueRange": [90, 150], "xp": 70 },
+        { "rarity": "legendary", "weight": 8, "valueRange": [150, 240], "xp": 110 },
+        { "rarity": "mythic", "weight": 4, "valueRange": [220, 360], "xp": 165 },
+        { "rarity": "relic", "weight": 0.4, "valueRange": [360, 600], "xp": 240 }
+      ],
+      "lootTable": {
+        "common": ["Stone Minnow", "Deep Silt", "Shadow Shrimp", "Cracked Lantern", "Waterlogged Tome"],
+        "uncommon": ["Duskwater Carp", "Abyssal Scale", "Pressure Pearl", "Forgotten Key", "Sealed Crate"],
+        "rare": ["Ghostfin Tuna", "Twilight Ray", "Obsidian Anchor", "Sunken Relic"],
+        "epic": ["Abyssal Angler", "Midnight Eel", "Moonlit Chalice", "Enchanted Compass", "Trench Chest"],
+        "legendary": ["Leviathan Fang", "Cursed Crown", "Tidal Scepter", "Gloomheart Pearl"],
+        "mythic": ["Eternal Whale", "Starless Eye", "Crown of Depths"],
+        "relic": ["Voidstone Relic", "Abyssal Crown"]
+      },
+      "goldMultiplier": 1.35,
+      "xpMultiplier": 1.3,
+      "imageUrl": "/biomes/abyssal_gulf.png"
+    },
+    {
+      "id": "crystal-fjord",
+      "name": "Crystal Fjord",
+      "tier": 4,
+      "rarityConfigs": [
+        { "rarity": "common", "weight": 34, "valueRange": [18, 38], "xp": 18 },
+        { "rarity": "uncommon", "weight": 22, "valueRange": [35, 60], "xp": 30 },
+        { "rarity": "rare", "weight": 16, "valueRange": [70, 125], "xp": 55 },
+        { "rarity": "epic", "weight": 12, "valueRange": [120, 200], "xp": 90 },
+        { "rarity": "legendary", "weight": 10, "valueRange": [190, 300], "xp": 135 },
+        { "rarity": "mythic", "weight": 6, "valueRange": [280, 450], "xp": 200 },
+        { "rarity": "relic", "weight": 0.45, "valueRange": [420, 720], "xp": 300 }
+      ],
+      "lootTable": {
+        "common": ["Ice Minnow", "Frost Kelp", "Glassy Pebble", "Frosted Chest", "Snowmelt Snail"],
+        "uncommon": ["Glacier Smelt", "Aurora Shrimp", "Frozen Locket", "Cracked Obelisk", "Frosted Chest"],
+        "rare": ["Opal Cod", "Shiver Ray", "Prismatic Pearl", "Glacial Cache"],
+        "epic": ["Aurora Salmon", "Crystal Pike", "Refraction Lens", "Enchanted Compass", "Aurora Prism"],
+        "legendary": ["Frostwyrm Scale", "Northern Crown", "Heart of Ice", "Aurora Antler"],
+        "mythic": ["Starshard Leviathan", "Eternal Glacier", "Celestine Orb"],
+        "relic": ["Glacial Relic", "Prismheart"]
+      },
+      "goldMultiplier": 1.55,
+      "xpMultiplier": 1.5,
+      "imageUrl": "/biomes/crystal_fjord.png"
+    },
+    {
+      "id": "astral-lagoon",
+      "name": "Astral Lagoon",
+      "tier": 5,
+      "rarityConfigs": [
+        { "rarity": "common", "weight": 30, "valueRange": [24, 48], "xp": 24 },
+        { "rarity": "uncommon", "weight": 22, "valueRange": [45, 80], "xp": 40 },
+        { "rarity": "rare", "weight": 16, "valueRange": [90, 150], "xp": 70 },
+        { "rarity": "epic", "weight": 14, "valueRange": [160, 260], "xp": 120 },
+        { "rarity": "legendary", "weight": 10, "valueRange": [250, 380], "xp": 180 },
+        { "rarity": "mythic", "weight": 8, "valueRange": [360, 520], "xp": 260 },
+        { "rarity": "relic", "weight": 0.5, "valueRange": [520, 860], "xp": 360 }
+      ],
+      "lootTable": {
+        "common": ["Starlit Minnow", "Moon Jelly", "Dusty Shell", "Gleaming Pebble"],
+        "uncommon": ["Comet Shrimp", "Nebula Carp", "Glimmer Pearl", "Starfall Crate"],
+        "rare": ["Meteoric Ray", "Void Lobster", "Radiant Crown", "Starfall Crate"],
+        "epic": ["Celestial Marlin", "Black Hole Eel", "Nova Relic", "Astral Chest"],
+        "legendary": ["Cosmic Leviathan Scale", "Sunforged Scepter", "Crown of Stars", "Lumenheart"],
+        "mythic": ["Eclipse Whale", "Singularity Core", "Heart of the Cosmos"],
+        "relic": ["Eternal Star Map", "Cosmic Relic"]
+      },
+      "goldMultiplier": 2.1,
+      "xpMultiplier": 1.9,
+      "imageUrl": "/biomes/astral_lagoon.png"
+    }
+  ],
+  "ui": {
+    "themes": [
+      {
+        "id": "default",
+        "name": "Midnight Cove",
+        "background": "#0b1524",
+        "backgroundAlt": "#0f1d30",
+        "panel": "rgba(19,33,53,0.9)",
+        "panelBorder": "rgba(120,166,255,0.25)",
+        "accent": "#7ad7ff",
+        "accentSoft": "rgba(120,166,255,0.12)",
+        "text": "#e8f0ff",
+        "muted": "#9fb3c8"
+      },
+      {
+        "id": "tropical",
+        "name": "Tropical Bay",
+        "background": "#0a1f1c",
+        "backgroundAlt": "#0f2b24",
+        "panel": "rgba(14,34,32,0.9)",
+        "panelBorder": "rgba(82,255,198,0.25)",
+        "accent": "#52ffc6",
+        "accentSoft": "rgba(82,255,198,0.12)",
+        "text": "#e5fff6",
+        "muted": "#9ad1c2"
+      },
+      {
+        "id": "sunset",
+        "name": "Harbor Sunset",
+        "background": "#1a0f24",
+        "backgroundAlt": "#261433",
+        "panel": "rgba(36,18,48,0.9)",
+        "panelBorder": "rgba(255,179,94,0.25)",
+        "accent": "#ffb35e",
+        "accentSoft": "rgba(255,179,94,0.14)",
+        "text": "#ffeedd",
+        "muted": "#d8b4a0"
+      },
+      {
+        "id": "glacier",
+        "name": "Glacier Dawn",
+        "background": "#051019",
+        "backgroundAlt": "#0a1f2e",
+        "panel": "rgba(26,52,72,0.92)",
+        "panelBorder": "rgba(160,225,255,0.45)",
+        "accent": "#d8f6ff",
+        "accentSoft": "rgba(216,246,255,0.24)",
+        "text": "#f5fdff",
+        "muted": "#c0dff3"
+      }
+    ]
+  },
+  "storeConfig": { "rotationHours": 4, "alwaysKeys": ["bag-upgrade", "bait-basic"], "slots": 6 }
+}
