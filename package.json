@@ -6,12 +6,14 @@
   "scripts": {
     "start": "ts-node src/server/index.ts",
     "start:prod": "node dist/server/index.js",
-    "build": "tsc",
+    "build": "npm run build:assets && tsc",
     "dev": "ts-node-dev src/server/index.ts",
     "overlay:dev": "vite",
     "overlay:build": "cross-env VITE_TARGET=overlay VITE_OUTDIR=dist/overlay vite build",
     "overlay:preview": "vite preview",
-    "panel:build": "cross-env VITE_TARGET=panel VITE_OUTDIR=dist/panel vite build"
+    "panel:build": "cross-env VITE_TARGET=panel VITE_OUTDIR=dist/panel vite build",
+    "build:assets": "npm run overlay:build && npm run panel:build",
+    "postinstall": "npm run build:assets"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
