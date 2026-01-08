@@ -82,6 +82,15 @@ function applyTheme(theme?: ThemePalette) {
   root.style.setProperty('--muted', theme.muted);
 }
 
+function hexToRgba(hex: string, alpha: number) {
+  const normalized = hex.replace('#', '');
+  const bigint = parseInt(normalized, 16);
+  const r = (bigint >> 16) & 255;
+  const g = (bigint >> 8) & 255;
+  const b = bigint & 255;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 function App() {
   const [session, setSession] = useState<{ login: string; displayName?: string } | null>(null);
   const [state, setState] = useState<PlayerStatePublic | null>(null);
@@ -105,6 +114,9 @@ function App() {
   const [catalogVersion, setCatalogVersion] = useState<string | null>(null);
   const socketRef = useRef<ReturnType<typeof io> | null>(null);
   const [activeTab, setActiveTab] = useState<'play' | 'inventory' | 'store' | 'upgrades' | 'trade' | 'craft'>('play');
+  const [accentColor, setAccentColor] = useState<string>('#7ad7ff');
+  const [showLoginPreview, setShowLoginPreview] = useState<boolean>(false);
+  const [selectedThemeId, setSelectedThemeId] = useState<string>('');
 
   const tabs: Array<{ key: typeof activeTab; label: string }> = [
     { key: 'play', label: 'Play' },
@@ -145,6 +157,19 @@ function App() {
     return Math.min(100, Math.round((state.xp / state.xpNeeded) * 100));
   }, [state]);
 
+  const availableThemes = useMemo(() => {
+    const uiThemes = catalog?.ui?.themes ?? (catalog?.ui?.theme ? [catalog.ui.theme] : []);
+    return uiThemes?.map((t, idx) => ({ id: t.name || `theme-${idx}`, label: t.name || `Theme ${idx + 1}`, value: t })) || [];
+  }, [catalog]);
+
+  const applyAccent = (accent?: string) => {
+    const root = document.documentElement;
+    if (accent) {
+      root.style.setProperty('--accent', accent);
+      root.style.setProperty('--accent-soft', hexToRgba(accent, 0.18));
+    }
+  };
+
   useEffect(() => {
     if (!state) return;
     const current = state.poleSkinId;
@@ -155,7 +180,35 @@ function App() {
   useEffect(() => {
     const theme = catalog?.ui?.theme ?? catalog?.ui?.themes?.[0];
     applyTheme(theme);
-  }, [catalog]);
+    applyAccent(accentColor);
+  }, [catalog, accentColor]);
+
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('panel-theme-id');
+    if (savedTheme) setSelectedThemeId(savedTheme);
+  }, []);
+
+  useEffect(() => {
+    if (!catalog) return;
+    const chosen = availableThemes.find((t) => t.id === selectedThemeId)?.value;
+    const themeToApply = chosen || catalog?.ui?.theme || catalog?.ui?.themes?.[0];
+    if (themeToApply) applyTheme(themeToApply as ThemePalette);
+  }, [selectedThemeId, availableThemes, catalog]);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('panel-accent');
+    if (saved) {
+      setAccentColor(saved);
+      applyAccent(saved);
+    } else {
+      applyAccent(accentColor);
+    }
+  }, []);
+
+  useEffect(() => {
+    applyAccent(accentColor);
+    localStorage.setItem('panel-accent', accentColor);
+  }, [accentColor]);
 
   const recipeList = useMemo(() => {
     if (catalog?.recipes?.length) {
@@ -387,6 +440,24 @@ function App() {
     ? `@${state.twitchLogin}`
     : '';
 
+  const renderLoginView = (isPreview?: boolean) => (
+    <div className="login-screen">
+      <div className="login-card">
+        <div className="title">Fishing Panel</div>
+        <div className="muted">Authorize with Twitch to enable chat commands and syncing.</div>
+        <div className="button-row" style={{ marginTop: 12 }}>
+          <button className="primary" onClick={() => (window.location.href = apiUrl('/api/auth/login'))} disabled={loading}>
+            Login with Twitch
+          </button>
+          <button className="ghost" onClick={() => window.open(apiUrl('/api/auth/login'), '_blank')} disabled={loading}>Open in new tab</button>
+          {isPreview && (
+            <button className="ghost" onClick={() => setShowLoginPreview(false)}>Close preview</button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
   const renderPlay = () => {
     if (!state) return null;
     return (
@@ -615,10 +686,7 @@ function App() {
   if (!session && !devMode) {
     return (
       <div className="panel-shell">
-        <div className="muted">{status}</div>
-        <button className="primary" onClick={() => (window.location.href = apiUrl('/api/auth/login'))} disabled={loading}>
-          Login with Twitch
-        </button>
+        {renderLoginView()}
       </div>
     );
   }
@@ -639,9 +707,35 @@ function App() {
                 <button className="ghost" disabled={loading} onClick={logout}>Logout</button>
               </>
             )}
+            <button className="ghost" disabled={loading} onClick={() => window.open(apiUrl('/api/auth/login'), '_blank')}>View auth</button>
+            <button className="ghost" onClick={() => setShowLoginPreview(true)}>Preview login</button>
             <button className="ghost" disabled={loading} onClick={() => refresh('Synced')}>Refresh</button>
           </div>
         </header>
+
+        <div className="theme-controls">
+          {availableThemes.length > 0 && (
+            <label className="theme-control">
+              <span className="muted tiny">Theme</span>
+              <select
+                value={selectedThemeId}
+                onChange={(e) => {
+                  setSelectedThemeId(e.target.value);
+                  localStorage.setItem('panel-theme-id', e.target.value);
+                }}
+              >
+                <option value="">Catalog default</option>
+                {availableThemes.map((t) => (
+                  <option key={t.id} value={t.id}>{t.label}</option>
+                ))}
+              </select>
+            </label>
+          )}
+          <label className="theme-control">
+            <span className="muted tiny">Accent</span>
+            <input type="color" value={accentColor} onChange={(e) => setAccentColor(e.target.value)} />
+          </label>
+        </div>
 
         <div className="tab-strip">
           {tabs.map((t) => (
@@ -675,6 +769,12 @@ function App() {
           {activeTab === 'upgrades' && renderUpgrades()}
           {activeTab === 'trade' && renderTrade()}
           {activeTab === 'craft' && renderCraft()}
+        </div>
+      )}
+
+      {showLoginPreview && (
+        <div className="login-overlay">
+          {renderLoginView(true)}
         </div>
       )}
     </div>

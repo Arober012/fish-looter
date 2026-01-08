@@ -211,6 +211,18 @@ body {
   box-shadow: 0 6px 14px rgba(122, 215, 255, 0.25);
 }
 
+.theme-controls {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  margin: 4px 0 6px;
+}
+
+.theme-control {
+  display: grid;
+  gap: 4px;
+}
+
 .section-title {
   font-weight: 700;
   margin-bottom: 6px;
@@ -284,6 +296,14 @@ select,
   color: var(--text);
 }
 
+input[type="color"] {
+  padding: 6px;
+  height: 36px;
+  width: 52px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
 select option {
   background: var(--surface-2);
   color: var(--text);
@@ -306,4 +326,32 @@ select option {
   .stat-chips {
     width: 100%;
   }
+}
+
+.login-screen {
+  min-height: 60vh;
+  display: grid;
+  place-items: center;
+}
+
+.login-card {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+  width: min(420px, 90vw);
+  text-align: center;
+  display: grid;
+  gap: 10px;
+}
+
+.login-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(6px);
+  display: grid;
+  place-items: center;
+  z-index: 20;
 }
