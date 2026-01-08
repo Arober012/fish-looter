@@ -62,6 +62,57 @@ const fallbackEssences: Array<{ id: string; label: string }> = [
   { id: 'mythic-essence', label: 'Mythic Essence (+12% rarity)' },
 ];
 
+const palettePresets = [
+  {
+    id: 'deep-blue',
+    label: 'Deep Blue',
+    colors: {
+      bg: '#0b1524',
+      surface: '#0f1d30',
+      surface2: '#111c2f',
+      border: 'rgba(120, 166, 255, 0.25)',
+      text: '#e8f0ff',
+      muted: '#9fb3c8',
+    },
+  },
+  {
+    id: 'slate',
+    label: 'Slate',
+    colors: {
+      bg: '#0c0f14',
+      surface: '#12171f',
+      surface2: '#171d26',
+      border: 'rgba(140, 160, 185, 0.35)',
+      text: '#e6edf3',
+      muted: '#9aa7b8',
+    },
+  },
+  {
+    id: 'teal-drift',
+    label: 'Teal Drift',
+    colors: {
+      bg: '#071a1f',
+      surface: '#0b2229',
+      surface2: '#0e2a32',
+      border: 'rgba(93, 190, 194, 0.35)',
+      text: '#e5fbff',
+      muted: '#8fb5b9',
+    },
+  },
+  {
+    id: 'warm-dusk',
+    label: 'Warm Dusk',
+    colors: {
+      bg: '#130f0f',
+      surface: '#1a1414',
+      surface2: '#211818',
+      border: 'rgba(255, 194, 153, 0.3)',
+      text: '#f7ede2',
+      muted: '#d6c3b5',
+    },
+  },
+];
+
 const poleSkinNames: Record<PoleSkinId, string> = {
   classic: 'Classic Oak',
   carbon: 'Carbon Pro',
@@ -91,6 +142,18 @@ function hexToRgba(hex: string, alpha: number) {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+function applyPalette(colors?: { bg?: string; surface?: string; surface2?: string; border?: string; text?: string; muted?: string; bgAlt?: string }) {
+  if (!colors) return;
+  const root = document.documentElement;
+  if (colors.bg) root.style.setProperty('--bg', colors.bg);
+  if (colors.bgAlt) root.style.setProperty('--bg-alt', colors.bgAlt);
+  if (colors.surface) root.style.setProperty('--surface', colors.surface);
+  if (colors.surface2) root.style.setProperty('--surface-2', colors.surface2);
+  if (colors.border) root.style.setProperty('--border', colors.border);
+  if (colors.text) root.style.setProperty('--text', colors.text);
+  if (colors.muted) root.style.setProperty('--muted', colors.muted);
+}
+
 function App() {
   const [session, setSession] = useState<{ login: string; displayName?: string } | null>(null);
   const [state, setState] = useState<PlayerStatePublic | null>(null);
@@ -117,6 +180,7 @@ function App() {
   const [accentColor, setAccentColor] = useState<string>('#7ad7ff');
   const [showLoginPreview, setShowLoginPreview] = useState<boolean>(false);
   const [selectedThemeId, setSelectedThemeId] = useState<string>('');
+  const [selectedPaletteId, setSelectedPaletteId] = useState<string>('');
 
   const tabs: Array<{ key: typeof activeTab; label: string }> = [
     { key: 'play', label: 'Play' },
@@ -162,6 +226,8 @@ function App() {
     return uiThemes?.map((t, idx) => ({ id: t.name || `theme-${idx}`, label: t.name || `Theme ${idx + 1}`, value: t })) || [];
   }, [catalog]);
 
+  const availablePalettes = useMemo(() => palettePresets, []);
+
   const applyAccent = (accent?: string) => {
     const root = document.documentElement;
     if (accent) {
@@ -169,6 +235,11 @@ function App() {
       root.style.setProperty('--accent-soft', hexToRgba(accent, 0.18));
     }
   };
+
+  const baseTheme = useMemo(() => {
+    const chosen = availableThemes.find((t) => t.id === selectedThemeId)?.value;
+    return (chosen || catalog?.ui?.theme || catalog?.ui?.themes?.[0]) as ThemePalette | undefined;
+  }, [availableThemes, selectedThemeId, catalog]);
 
   useEffect(() => {
     if (!state) return;
@@ -178,37 +249,36 @@ function App() {
   }, [state]);
 
   useEffect(() => {
-    const theme = catalog?.ui?.theme ?? catalog?.ui?.themes?.[0];
-    applyTheme(theme);
-    applyAccent(accentColor);
-  }, [catalog, accentColor]);
-
-  useEffect(() => {
+    const savedAccent = localStorage.getItem('panel-accent');
+    if (savedAccent) {
+      setAccentColor(savedAccent);
+      applyAccent(savedAccent);
+    } else {
+      applyAccent(accentColor);
+    }
+    const savedPalette = localStorage.getItem('panel-palette-id');
+    if (savedPalette) setSelectedPaletteId(savedPalette);
     const savedTheme = localStorage.getItem('panel-theme-id');
     if (savedTheme) setSelectedThemeId(savedTheme);
   }, []);
 
   useEffect(() => {
-    if (!catalog) return;
-    const chosen = availableThemes.find((t) => t.id === selectedThemeId)?.value;
-    const themeToApply = chosen || catalog?.ui?.theme || catalog?.ui?.themes?.[0];
-    if (themeToApply) applyTheme(themeToApply as ThemePalette);
-  }, [selectedThemeId, availableThemes, catalog]);
-
-  useEffect(() => {
-    const saved = localStorage.getItem('panel-accent');
-    if (saved) {
-      setAccentColor(saved);
-      applyAccent(saved);
-    } else {
-      applyAccent(accentColor);
+    if (baseTheme) applyTheme(baseTheme);
+    applyAccent(accentColor);
+    if (selectedPaletteId) {
+      const pal = availablePalettes.find((p) => p.id === selectedPaletteId);
+      if (pal) applyPalette(pal.colors);
     }
-  }, []);
+  }, [baseTheme, accentColor, selectedPaletteId, availablePalettes]);
 
   useEffect(() => {
     applyAccent(accentColor);
     localStorage.setItem('panel-accent', accentColor);
   }, [accentColor]);
+
+  useEffect(() => {
+    localStorage.setItem('panel-palette-id', selectedPaletteId || '');
+  }, [selectedPaletteId]);
 
   const recipeList = useMemo(() => {
     if (catalog?.recipes?.length) {
@@ -731,6 +801,18 @@ function App() {
               </select>
             </label>
           )}
+          <label className="theme-control">
+            <span className="muted tiny">Panel palette</span>
+            <select
+              value={selectedPaletteId}
+              onChange={(e) => setSelectedPaletteId(e.target.value)}
+            >
+              <option value="">Theme default</option>
+              {availablePalettes.map((p) => (
+                <option key={p.id} value={p.id}>{p.label}</option>
+              ))}
+            </select>
+          </label>
           <label className="theme-control">
             <span className="muted tiny">Accent</span>
             <input type="color" value={accentColor} onChange={(e) => setAccentColor(e.target.value)} />
