@@ -4,6 +4,7 @@
   },
   "start": "npm run start:prod",
   "env": {
-    "PORT": "8080"
+    "PORT": "8080",
+    "DATA_DIR": "/data"
   }
 }

@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto';
 import { Server } from 'socket.io';
 import { Catalog, CatalogChatCommand, ChatCommandEvent, CraftingMaterialId, EssenceId, EnchantmentInstance, InventoryItem, OverlayEvent, PlayerStatePublic, PoleSkinId, Rarity, StoreItem, ThemePalette, TradeListing, UpgradeDefinition } from '../../shared/types';
 import { fetchTwitchUser } from '../twitch-helix';
+import { resolveInDataDir } from '../data-dir';
 
 let lastHelixSuccessAt: number | null = null;
 let lastHelixError: string | null = null;
@@ -122,7 +123,7 @@ function getCraftingRecipes(): CraftingRecipe[] {
     return craftingRecipes;
 }
 
-const dataDir = path.resolve(process.cwd(), 'data', 'saves');
+const dataDir = resolveInDataDir('saves');
 export const saveDir = dataDir; // exposed for startup logging
 function tradeStorePathForChannel(channel?: string) {
     const chan = (channel ?? process.env.TWITCH_CHANNEL ?? 'default').toLowerCase();
@@ -188,7 +189,7 @@ const customLoot: Record<Rarity, string[]> = {
 
 // Chat command config loaded from data/commands.json (optional) to enable/disable/alias without panel rebuilds
 type ChatCommandsConfig = { disabled?: string[]; enabled?: string[]; aliases?: Record<string, string>; version?: string; updatedAt?: number };
-const chatCommandsConfigPath = path.resolve(process.cwd(), 'data', 'commands.json');
+const chatCommandsConfigPath = resolveInDataDir('commands.json');
 let chatCommandsConfig: ChatCommandsConfig = loadChatCommandsConfig();
 
 function loadChatCommandsConfig(): ChatCommandsConfig {
@@ -637,7 +638,7 @@ function skinStoreItems(catalog?: Catalog): StoreItem[] {
 
 const baseCatalogVersion = process.env.CATALOG_VERSION ?? '1.0.0';
 const baseCatalogTimestamp = Date.now();
-const catalogOverridesPath = path.resolve(process.cwd(), 'data', 'catalog.json');
+const catalogOverridesPath = resolveInDataDir('catalog.json');
 
 function loadCatalogOverrides(): Partial<Catalog> | null {
     try {
@@ -2662,9 +2663,11 @@ export async function processChatCommand(io: Server, payload: ChatCommandEvent &
 
     const state = await loadPlayer(username, chan);
 
-    // Panel-only commands guard
+    // Panel-only commands guard (opt-in). Default behavior allows chat control as documented.
+    // Set PANEL_ONLY_COMMANDS=true to require panel for inventory/store/buy/sell/etc.
+    const panelOnlyMode = process.env.PANEL_ONLY_COMMANDS === 'true';
     const panelOnly = new Set(['store', 'store-refresh', 'buy', 'sell', 'use', 'inventory', 'upgrades', 'equip', 'trade']);
-    if (panelOnly.has(command) && !fromPanel) {
+    if (panelOnlyMode && panelOnly.has(command) && !fromPanel) {
         emit(io, { type: 'status', text: `${username}: this action is panel-only. Open the extension panel to manage items/store/upgrades.` });
         pushLog(io, `${username} blocked: panel-only command ${command}.`);
         return;

@@ -4,5 +4,6 @@ dist/
 .env.*
 !.env.example
 data/saves/
+data/channels.json
 *.pem
 *.zip

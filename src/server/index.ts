@@ -13,12 +13,13 @@ import cookieParser from 'cookie-parser';
 import crypto from 'crypto';
 import { signSession, setSessionCookie, clearSessionCookie, requireSession, verifySessionToken } from './auth-session';
 import { upsertChannel, getChannelById, getChannelByLogin, listChannels } from './channel-store';
+import { getDataDir } from './data-dir';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 dotenv.config();
 
 const effectiveChannel = process.env.TWITCH_CHANNEL ? process.env.TWITCH_CHANNEL.toLowerCase() : 'default';
-console.log(`[startup] twitch_channel=${effectiveChannel} save_dir=${saveDir}`);
+console.log(`[startup] twitch_channel=${effectiveChannel} data_dir=${getDataDir()} save_dir=${saveDir}`);
 
 const app = express();
 app.use(cookieParser());
@@ -399,6 +400,13 @@ app.post('/api/panel/trade/cancel', requireSession, async (req: Request, res: Re
 // Initialize Twitch bridge to listen to chat and forward to command processor
 listChannels()
     .then((records) => {
+        if (!records.length) {
+            console.warn('[twitch] No saved channels found (data/channels.json empty or missing). Chat commands will not work until you log in via /api/auth/login to store tokens.');
+            if (effectiveChannel && effectiveChannel !== 'default') {
+                console.warn(`[twitch] Falling back to anonymous chat connection for #${effectiveChannel} (read-only). Set TWITCH_CHANNEL and redeploy if needed.`);
+                chatBridge.addChannel({ channelId: effectiveChannel, login: effectiveChannel, updatedAt: Date.now() });
+            }
+        }
         records.forEach((rec) => chatBridge.addChannel(rec));
     })
     .catch((err) => console.warn('[twitch] Failed to load channels for chat bridge', err));

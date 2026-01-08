@@ -1,5 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
+import { resolveInDataDir } from './data-dir';
 
 export type ChannelRecord = {
     channelId: string;
@@ -11,7 +12,7 @@ export type ChannelRecord = {
     updatedAt: number;
 };
 
-const storePath = path.resolve(process.cwd(), 'data', 'channels.json');
+const storePath = resolveInDataDir('channels.json');
 
 async function readStore(): Promise<ChannelRecord[]> {
     try {

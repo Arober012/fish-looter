@@ -55,6 +55,27 @@ obs-overlay-fishing-game
 - Viewers can interact with the game by sending commands in the Twitch chat.
 - Commands are handled in `src/server/handlers/commands.ts`, where you can define the game mechanics and responses.
 
+## Railway Deployment Notes (Token Persistence)
+This app stores Twitch OAuth tokens (used for chat commands) and game saves under a `data/` directory.
+
+If you deploy on Railway without a Volume, the filesystem can be ephemeral across deploys/restarts, which means:
+- `data/channels.json` (OAuth tokens) may disappear → the server won’t reconnect to Twitch chat → chat commands stop working.
+
+Recommended setup:
+- Create a Railway **Volume** and mount it (commonly `/data`).
+- Set environment variable `DATA_DIR=/data`.
+
+After that, the server will store:
+- Tokens at `/data/channels.json`
+- Saves at `/data/saves/`
+
+If the server logs "No saved channels found", visit `/api/auth/login` once to re-authorize and persist tokens.
+
+If you cannot use Volumes (e.g., plan limitations), you can still run chat commands without storing OAuth tokens:
+- Set `TWITCH_CHANNEL=<your_channel_login>`
+- The server will connect to Twitch chat **anonymously (read-only)** and still receive `!commands`.
+- Note: anonymous mode cannot send chat messages as the bot; it only listens.
+
 ## Contributing
 Feel free to submit issues or pull requests if you have suggestions or improvements for the project.
 
