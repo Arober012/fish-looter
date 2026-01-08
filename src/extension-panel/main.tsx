@@ -22,6 +22,7 @@ async function fetchState(devMode?: boolean) {
   const res = await fetch(apiUrl('/api/state'), {
     credentials: 'include',
   });
+  if (res.status === 401) throw new Error('Not authenticated');
   if (!res.ok) throw new Error('Failed to load state');
   return res.json() as Promise<{ state: PlayerStatePublic; store: StoreItem[]; upgrades: UpgradeDefinition[]; tradeBoard: TradeListing[]; storeExpiresAt: number; storeRefreshRemainingMs: number; catalogVersion?: string }>;
 }
@@ -33,6 +34,7 @@ async function panelPost(path: string, body: Record<string, any> = {}) {
     credentials: 'include',
     body: JSON.stringify(body),
   });
+  if (res.status === 401) throw new Error('Not authenticated');
   if (!res.ok) {
     // Try to surface a clean error message instead of raw JSON
     let msg = 'Request failed';
@@ -102,6 +104,24 @@ function App() {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [catalogVersion, setCatalogVersion] = useState<string | null>(null);
   const socketRef = useRef<ReturnType<typeof io> | null>(null);
+
+  const handleAuthLost = (message?: string) => {
+    setSession(null);
+    setState(null);
+    setStore([]);
+    setUpgrades([]);
+    setTradeBoard([]);
+    setStatus(message || 'Login required');
+  };
+
+  const logout = async () => {
+    try {
+      await fetch(apiUrl('/api/auth/logout'), { method: 'POST', credentials: 'include' });
+    } catch {
+      // ignore
+    }
+    handleAuthLost('Logged out');
+  };
 
   const panelDevFlag = (typeof process !== 'undefined' && (process as any).env?.VITE_PANEL_DEV) || (window as any).__PANEL_DEV__;
   const devMode = typeof window !== 'undefined' && (window.location.search.includes('dev=1') || panelDevFlag === 'true' || panelDevFlag === true);
@@ -255,9 +275,17 @@ function App() {
 
   const refresh = async (msg?: string) => {
     if (!catalog) await ensureCatalog();
-    const payload = await fetchState(devMode);
-    applyStatePayload(payload);
-    if (msg) setStatus(msg);
+    try {
+      const payload = await fetchState(devMode);
+      applyStatePayload(payload);
+      if (msg) setStatus(msg);
+    } catch (err: any) {
+      if ((err?.message || '').toLowerCase().includes('not authenticated')) {
+        handleAuthLost('Session expired — please login again');
+        return;
+      }
+      throw err;
+    }
   };
 
   const doPanel = async (path: string, body: Record<string, any> = {}, msg?: string) => {
@@ -267,7 +295,11 @@ function App() {
       await panelPost(path, body);
       await refresh(msg);
     } catch (err: any) {
-      setStatus(err?.message || 'Action failed');
+      if ((err?.message || '').toLowerCase().includes('not authenticated')) {
+        handleAuthLost('Session expired — please login again');
+      } else {
+        setStatus(err?.message || 'Action failed');
+      }
     } finally {
       setLoading(false);
     }
@@ -280,7 +312,11 @@ function App() {
       await panelPost('/api/command', { command });
       await refresh(`Sent !${command}`);
     } catch (err: any) {
-      setStatus(err?.message || 'Command failed');
+      if ((err?.message || '').toLowerCase().includes('not authenticated')) {
+        handleAuthLost('Session expired — please login again');
+      } else {
+        setStatus(err?.message || 'Command failed');
+      }
     } finally {
       setLoading(false);
     }
@@ -357,6 +393,7 @@ function App() {
         </div>
         <div className="header-actions">
           {devMode && <span className="pill pill-dev">Dev mode</span>}
+          {!devMode && session && <button className="ghost" disabled={loading} onClick={logout}>Logout</button>}
           <button className="ghost" disabled={loading} onClick={() => refresh('Synced')}>Refresh</button>
         </div>
       </header>

@@ -12,7 +12,7 @@ import { ChatCommandEvent, EssenceId } from '../shared/types';
 import cookieParser from 'cookie-parser';
 import crypto from 'crypto';
 import { signSession, setSessionCookie, clearSessionCookie, requireSession, verifySessionToken } from './auth-session';
-import { upsertChannel, getChannelById, getChannelByLogin, listChannels } from './channel-store';
+import { upsertChannel, getChannelById, getChannelByLogin, listChannels, cleanupChannels } from './channel-store';
 import { getDataDir } from './data-dir';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
@@ -237,6 +237,12 @@ app.get('/api/debug/storage', async (_req: Request, res: Response) => {
     }
 
     res.json({ dataDir, channelsPath, channelsFile, channelCount, saveDir });
+});
+
+app.post('/api/debug/storage/cleanup', requireSession, async (_req: Request, res: Response) => {
+    // Requires an authenticated session to avoid random callers deleting state.
+    const result = await cleanupChannels();
+    res.json({ ok: true, ...result });
 });
 
 app.get('/api/debug/twitch', async (_req: Request, res: Response) => {
