@@ -2599,7 +2599,7 @@ async function handleCooldownCommand(io: Server, state: PlayerState, args: strin
     emit(io, { type: 'status', text: `${state.username} set the per-user cooldown to ${clampedSeconds}s.` });
 }
 
-export async function processChatCommand(io: Server, payload: ChatCommandEvent & { fromPanel?: boolean }) {
+export async function processChatCommand(io: Server, payload: ChatCommandEvent & { fromPanel?: boolean }, sendChat?: (message: string) => Promise<void>) {
     const { username, args = [], isMod, isBroadcaster, channel, fromPanel } = payload;
     const rawCommand = (payload.command ?? '').toLowerCase();
     const command = resolveCommandName(rawCommand);
@@ -2738,7 +2738,15 @@ export async function processChatCommand(io: Server, payload: ChatCommandEvent &
             await handleResetProfile(io, state, args, isMod, isBroadcaster);
             break;
         case 'panel':
-            emit(io, { type: 'status', text: `${state.username}: Panel link → https://custom-overlays.com/panel` });
+            if (sendChat) {
+                try {
+                    await sendChat('Open the panel: https://custom-overlays.com/panel');
+                } catch (err) {
+                    emit(io, { type: 'status', text: `Could not post panel link to chat: ${err instanceof Error ? err.message : String(err)}` });
+                }
+            } else {
+                emit(io, { type: 'status', text: `${state.username}: Panel link → https://custom-overlays.com/panel` });
+            }
             break;
         default:
             emit(io, { type: 'status', text: `Unknown command: !${command}` });

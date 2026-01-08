@@ -11,10 +11,10 @@ type ConnectedClient = {
 
 export class ChatBridge {
     private io: Server;
-    private onChatCommand: (io: Server, payload: ChatCommandEvent) => void | Promise<void>;
+    private onChatCommand: (io: Server, payload: ChatCommandEvent, sendChat?: (message: string) => Promise<void>) => void | Promise<void>;
     private clients: Map<string, ConnectedClient> = new Map(); // channel -> client
 
-    constructor(io: Server, onChatCommand: (io: Server, payload: ChatCommandEvent) => void | Promise<void>) {
+    constructor(io: Server, onChatCommand: (io: Server, payload: ChatCommandEvent, sendChat?: (message: string) => Promise<void>) => void | Promise<void>) {
         this.io = io;
         this.onChatCommand = onChatCommand;
     }
@@ -159,7 +159,8 @@ export class ChatBridge {
             };
 
             try {
-                const result = this.onChatCommand(this.io, payload);
+                const sendChat = (text: string) => this.say(chan, text);
+                const result = this.onChatCommand(this.io, payload, sendChat);
                 if (result && typeof (result as any).catch === 'function') {
                     (result as Promise<void>).catch((err) => console.error('[twitch] Command handler rejected', err));
                 }
@@ -174,5 +175,13 @@ export class ChatBridge {
         } catch (err) {
             console.error(`[twitch] Connection failed for #${chan}`, err);
         }
+    }
+
+    async say(channel: string, message: string) {
+        const entry = this.clients.get(channel);
+        if (!entry) throw new Error(`Not connected to #${channel}`);
+        if (entry.authMode !== 'oauth') throw new Error(`Bot is not authenticated to speak in #${channel}`);
+        const target = channel.startsWith('#') ? channel : `#${channel}`;
+        await entry.client.say(target, message);
     }
 }
