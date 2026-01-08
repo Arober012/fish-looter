@@ -50,3 +50,7 @@ export async function getChannelById(channelId: string): Promise<ChannelRecord |
     const records = await readStore();
     return records.find((r) => r.channelId === channelId) ?? null;
 }
+
+export async function listChannels(): Promise<ChannelRecord[]> {
+    return readStore();
+}

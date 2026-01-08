@@ -6,13 +6,13 @@ import { createServer } from 'http';
 import { createServer as createSecureServer } from 'https';
 import { createHash } from 'crypto';
 import { Server } from 'socket.io';
-import { initializeTwitchBridge } from './twitch-bridge';
+import { ChatBridge } from './twitch-bridge';
 import { getPublicState, processChatCommand, getPanelData, processPanelCommand, panelCraft, panelEnchant, panelTradeList, panelTradeBuy, panelTradeCancel, panelStoreRefresh, getCatalogSnapshot, getCatalogDebug, getHelixDebug, saveDir } from './handlers/commands';
 import { ChatCommandEvent, EssenceId } from '../shared/types';
 import cookieParser from 'cookie-parser';
 import crypto from 'crypto';
 import { signSession, setSessionCookie, clearSessionCookie, requireSession, verifySessionToken } from './auth-session';
-import { upsertChannel, getChannelById, getChannelByLogin } from './channel-store';
+import { upsertChannel, getChannelById, getChannelByLogin, listChannels } from './channel-store';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 dotenv.config();
@@ -57,6 +57,7 @@ const PORT = Number(process.env.PORT) || 3100;
 const overlayPath = path.resolve(__dirname, '../../dist/overlay');
 const panelPath = path.resolve(__dirname, '../../dist/panel');
 const panelHtmlPath = path.join(panelPath, 'panel.html');
+const chatBridge = new ChatBridge(io, processChatCommand);
 
 app.use(express.json());
 // CORS: allow Twitch extension origin (and dev); include Authorization for preflight
@@ -152,7 +153,7 @@ app.get('/api/auth/callback', async (req: Request, res: Response) => {
         const user = userJson.data?.[0];
         if (!user) return res.status(400).send('User not found');
 
-        await upsertChannel({
+        const record = {
             channelId: user.id,
             login: user.login,
             displayName: user.display_name,
@@ -160,7 +161,9 @@ app.get('/api/auth/callback', async (req: Request, res: Response) => {
             botRefreshToken: refreshToken,
             scopes,
             updatedAt: Date.now(),
-        });
+        };
+        await upsertChannel(record);
+        await chatBridge.addChannel(record);
 
         const sessionToken = signSession({ channelId: user.id, login: user.login, displayName: user.display_name });
         setSessionCookie(res, sessionToken);
@@ -394,7 +397,11 @@ app.post('/api/panel/trade/cancel', requireSession, async (req: Request, res: Re
 });
 
 // Initialize Twitch bridge to listen to chat and forward to command processor
-initializeTwitchBridge(io, processChatCommand);
+listChannels()
+    .then((records) => {
+        records.forEach((rec) => chatBridge.addChannel(rec));
+    })
+    .catch((err) => console.warn('[twitch] Failed to load channels for chat bridge', err));
 
 // Serve panel bundle explicitly so it is not caught by the overlay SPA fallback
 app.get(['/panel', '/panel.html'], (_req: Request, res: Response) => {

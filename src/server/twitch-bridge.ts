@@ -1,60 +1,74 @@
 import { ChatUserstate, Client } from 'tmi.js';
 import { Server } from 'socket.io';
 import { ChatCommandEvent } from '../shared/types';
+import { ChannelRecord } from './channel-store';
 
-export function initializeTwitchBridge(
-    io: Server,
-    onChatCommand: (io: Server, payload: ChatCommandEvent) => void
-) {
-    const channel = process.env.TWITCH_CHANNEL ?? '';
-    const username = process.env.TWITCH_USERNAME ?? '';
-    const oauth = process.env.TWITCH_OAUTH_TOKEN ?? '';
+type ConnectedClient = {
+    channel: string;
+    client: Client;
+};
 
-    // Skip connecting to Twitch chat if required config is missing to keep the server running.
-    if (!channel || !username || !oauth) {
-        console.warn('[twitch] Missing TWITCH_CHANNEL / TWITCH_USERNAME / TWITCH_OAUTH_TOKEN; skipping chat bridge');
-        return;
+export class ChatBridge {
+    private io: Server;
+    private onChatCommand: (io: Server, payload: ChatCommandEvent) => void;
+    private clients: Map<string, ConnectedClient> = new Map(); // channel -> client
+
+    constructor(io: Server, onChatCommand: (io: Server, payload: ChatCommandEvent) => void) {
+        this.io = io;
+        this.onChatCommand = onChatCommand;
     }
 
-    const twitchClient = new Client({
-        options: { debug: false },
-        identity: {
-            username,
-            password: oauth,
-        },
-        channels: [channel],
-    });
+    async addChannel(record: ChannelRecord) {
+        const chan = record.login.toLowerCase();
+        if (!record.botAccessToken) {
+            console.warn(`[twitch] Missing bot token for ${chan}; skipping chat join`);
+            return;
+        }
+        if (this.clients.has(chan)) return; // already connected
 
-    twitchClient.on('connected', (addr: string, port: number) => {
-        console.log(`[twitch] Connected to #${channel} via ${addr}:${port}`);
-    });
+        const username = record.login;
+        const oauth = record.botAccessToken.startsWith('oauth:') ? record.botAccessToken : `oauth:${record.botAccessToken}`;
 
-    twitchClient.on('disconnected', (reason: string) => {
-        console.warn(`[twitch] Disconnected: ${reason}`);
-    });
+        const client = new Client({
+            options: { debug: false },
+            identity: { username, password: oauth },
+            channels: [chan],
+        });
 
-    twitchClient.on('message', (_channel: string, tags: ChatUserstate, message: string, self: boolean) => {
-        if (self) return;
-        const raw = message.trim();
-        if (!raw.startsWith('!')) return;
+        client.on('connected', (addr: string, port: number) => {
+            console.log(`[twitch] Connected to #${chan} via ${addr}:${port}`);
+        });
 
-        const [cmd, ...args] = raw.slice(1).split(/\s+/);
-        const chan = channel.toLowerCase();
-        const isBroadcaster = Boolean(tags.badges?.broadcaster === '1' || (chan && tags.username?.toLowerCase() === chan));
-        const isMod = Boolean(tags.mod) || isBroadcaster;
-        const payload: ChatCommandEvent = {
-            username: tags['display-name'] ?? tags.username ?? 'anon',
-            command: cmd.toLowerCase(),
-            args,
-            isMod,
-            isBroadcaster,
-            channel: chan,
-        };
+        client.on('disconnected', (reason: string) => {
+            console.warn(`[twitch] Disconnected from #${chan}: ${reason}`);
+            this.clients.delete(chan);
+        });
 
-        onChatCommand(io, payload);
-    });
+        client.on('message', (_channel: string, tags: ChatUserstate, message: string, self: boolean) => {
+            if (self) return;
+            const raw = message.trim();
+            if (!raw.startsWith('!')) return;
 
-    twitchClient.connect().catch((err: unknown) => {
-        console.error('Twitch connection failed', err);
-    });
+            const [cmd, ...args] = raw.slice(1).split(/\s+/);
+            const isBroadcaster = Boolean(tags.badges?.broadcaster === '1' || (chan && tags.username?.toLowerCase() === chan));
+            const isMod = Boolean(tags.mod) || isBroadcaster;
+            const payload: ChatCommandEvent = {
+                username: tags['display-name'] ?? tags.username ?? 'anon',
+                command: cmd.toLowerCase(),
+                args,
+                isMod,
+                isBroadcaster,
+                channel: chan,
+            };
+
+            this.onChatCommand(this.io, payload);
+        });
+
+        try {
+            await client.connect();
+            this.clients.set(chan, { channel: chan, client });
+        } catch (err) {
+            console.error(`[twitch] Connection failed for #${chan}`, err);
+        }
+    }
 }
