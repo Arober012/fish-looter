@@ -2666,10 +2666,9 @@ export async function processChatCommand(io: Server, payload: ChatCommandEvent &
 
     // Panel-only commands guard (opt-in). Default behavior allows chat control as documented.
     // Set PANEL_ONLY_COMMANDS=true to require panel for inventory/store/buy/sell/etc.
-    const panelOnlyMode = process.env.PANEL_ONLY_COMMANDS === 'true';
     const panelOnly = new Set(['store', 'store-refresh', 'buy', 'sell', 'use', 'inventory', 'upgrades', 'equip', 'trade']);
-    if (panelOnlyMode && panelOnly.has(command) && !fromPanel) {
-        emit(io, { type: 'status', text: `${username}: this action is panel-only. Open the extension panel to manage items/store/upgrades.` });
+    if (!fromPanel && panelOnly.has(command)) {
+        emit(io, { type: 'status', text: `${username}: this action is panel-only. Open the panel: https://custom-overlays.com/panel` });
         pushLog(io, `${username} blocked: panel-only command ${command}.`);
         return;
     }
