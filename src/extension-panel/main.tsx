@@ -756,103 +756,107 @@ function App() {
   if (!session && !devMode) {
     return (
       <div className="panel-shell">
-        {renderLoginView()}
+        <div className="panel-surface">
+          {renderLoginView()}
+        </div>
       </div>
     );
   }
 
   return (
     <div className="panel-shell">
-      <div className="sticky-top">
-        <header className="panel-header">
-          <div>
-            <div className="eyebrow">Fishing Panel</div>
-            <div className="status-text">{status}</div>
-          </div>
-          <div className="header-actions">
-            {devMode && <span className="pill pill-dev">Dev mode</span>}
-            {!devMode && session && (
-              <>
-                <button className="ghost" disabled={loading} onClick={reauth}>Re-auth</button>
-                <button className="ghost" disabled={loading} onClick={logout}>Logout</button>
-              </>
-            )}
-            <button className="ghost" disabled={loading} onClick={() => window.open(apiUrl('/api/auth/login'), '_blank')}>View auth</button>
-            <button className="ghost" onClick={() => setShowLoginPreview(true)}>Preview login</button>
-            <button className="ghost" disabled={loading} onClick={() => refresh('Synced')}>Refresh</button>
-          </div>
-        </header>
+      <div className="panel-surface">
+        <div className="sticky-top">
+          <header className="panel-header">
+            <div>
+              <div className="eyebrow">Fishing Panel</div>
+              <div className="status-text">{status}</div>
+            </div>
+            <div className="header-actions">
+              {devMode && <span className="pill pill-dev">Dev mode</span>}
+              {!devMode && session && (
+                <>
+                  <button className="ghost" disabled={loading} onClick={reauth}>Re-auth</button>
+                  <button className="ghost" disabled={loading} onClick={logout}>Logout</button>
+                </>
+              )}
+              <button className="ghost" disabled={loading} onClick={() => window.open(apiUrl('/api/auth/login'), '_blank')}>View auth</button>
+              <button className="ghost" onClick={() => setShowLoginPreview(true)}>Preview login</button>
+              <button className="ghost" disabled={loading} onClick={() => refresh('Synced')}>Refresh</button>
+            </div>
+          </header>
 
-        <div className="theme-controls">
-          {availableThemes.length > 0 && (
+          <div className="theme-controls">
+            {availableThemes.length > 0 && (
+              <label className="theme-control">
+                <span className="muted tiny">Theme</span>
+                <select
+                  value={selectedThemeId}
+                  onChange={(e) => {
+                    setSelectedThemeId(e.target.value);
+                    localStorage.setItem('panel-theme-id', e.target.value);
+                  }}
+                >
+                  <option value="">Catalog default</option>
+                  {availableThemes.map((t) => (
+                    <option key={t.id} value={t.id}>{t.label}</option>
+                  ))}
+                </select>
+              </label>
+            )}
             <label className="theme-control">
-              <span className="muted tiny">Theme</span>
+              <span className="muted tiny">Panel palette</span>
               <select
-                value={selectedThemeId}
-                onChange={(e) => {
-                  setSelectedThemeId(e.target.value);
-                  localStorage.setItem('panel-theme-id', e.target.value);
-                }}
+                value={selectedPaletteId}
+                onChange={(e) => setSelectedPaletteId(e.target.value)}
               >
-                <option value="">Catalog default</option>
-                {availableThemes.map((t) => (
-                  <option key={t.id} value={t.id}>{t.label}</option>
+                <option value="">Theme default</option>
+                {availablePalettes.map((p) => (
+                  <option key={p.id} value={p.id}>{p.label}</option>
                 ))}
               </select>
             </label>
-          )}
-          <label className="theme-control">
-            <span className="muted tiny">Panel palette</span>
-            <select
-              value={selectedPaletteId}
-              onChange={(e) => setSelectedPaletteId(e.target.value)}
-            >
-              <option value="">Theme default</option>
-              {availablePalettes.map((p) => (
-                <option key={p.id} value={p.id}>{p.label}</option>
-              ))}
-            </select>
-          </label>
-          <label className="theme-control">
-            <span className="muted tiny">Accent</span>
-            <input type="color" value={accentColor} onChange={(e) => setAccentColor(e.target.value)} />
-          </label>
-        </div>
-
-        <div className="tab-strip">
-          {tabs.map((t) => (
-            <button
-              key={t.key}
-              className={`tab ${activeTab === t.key ? 'active' : ''}`}
-              onClick={() => setActiveTab(t.key)}
-              disabled={loading}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-
-        <section className="card quick-card">
-          <div className="section-title">Quick actions</div>
-          <div className="button-row">
-            <button className="primary" disabled={!state || loading} onClick={() => doCastReel('cast')}>Cast</button>
-            <button className="primary" disabled={!state || loading} onClick={() => doCastReel('reel')}>Reel</button>
-            <button className="ghost" disabled={!state || loading} onClick={() => doPanel('/api/panel/store/refresh', {}, 'Store refreshed')}>Refresh Store</button>
-            <button className="ghost" disabled={!state || loading} onClick={() => refresh('Inventory synced')}>Sync Inventory</button>
+            <label className="theme-control">
+              <span className="muted tiny">Accent</span>
+              <input type="color" value={accentColor} onChange={(e) => setAccentColor(e.target.value)} />
+            </label>
           </div>
-        </section>
-      </div>
 
-      {state && (
-        <div className="layout">
-          {activeTab === 'play' && renderPlay()}
-          {activeTab === 'inventory' && renderInventory()}
-          {activeTab === 'store' && renderStore()}
-          {activeTab === 'upgrades' && renderUpgrades()}
-          {activeTab === 'trade' && renderTrade()}
-          {activeTab === 'craft' && renderCraft()}
+          <div className="tab-strip">
+            {tabs.map((t) => (
+              <button
+                key={t.key}
+                className={`tab ${activeTab === t.key ? 'active' : ''}`}
+                onClick={() => setActiveTab(t.key)}
+                disabled={loading}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          <section className="card quick-card">
+            <div className="section-title">Quick actions</div>
+            <div className="button-row">
+              <button className="primary" disabled={!state || loading} onClick={() => doCastReel('cast')}>Cast</button>
+              <button className="primary" disabled={!state || loading} onClick={() => doCastReel('reel')}>Reel</button>
+              <button className="ghost" disabled={!state || loading} onClick={() => doPanel('/api/panel/store/refresh', {}, 'Store refreshed')}>Refresh Store</button>
+              <button className="ghost" disabled={!state || loading} onClick={() => refresh('Inventory synced')}>Sync Inventory</button>
+            </div>
+          </section>
         </div>
-      )}
+
+        {state && (
+          <div className="layout">
+            {activeTab === 'play' && renderPlay()}
+            {activeTab === 'inventory' && renderInventory()}
+            {activeTab === 'store' && renderStore()}
+            {activeTab === 'upgrades' && renderUpgrades()}
+            {activeTab === 'trade' && renderTrade()}
+            {activeTab === 'craft' && renderCraft()}
+          </div>
+        )}
+      </div>
 
       {showLoginPreview && (
         <div className="login-overlay">

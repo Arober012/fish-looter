@@ -24,6 +24,16 @@ body {
   color: var(--text);
 }
 
+.panel-surface {
+  max-width: 1280px;
+  margin: 0 auto 24px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.25);
+}
+
 .panel-header {
   display: flex;
   justify-content: space-between;
@@ -66,6 +76,7 @@ body {
   padding-bottom: 8px;
   background: linear-gradient(180deg, rgba(11, 21, 36, 0.95), rgba(11, 21, 36, 0.7));
   backdrop-filter: blur(10px);
+  border-radius: 12px 12px 10px 10px;
 }
 
 .card {

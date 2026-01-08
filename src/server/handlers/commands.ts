@@ -251,6 +251,7 @@ const commandCatalog: CatalogChatCommand[] = [
     { name: 'event', description: 'Start/stop global events (mod-only)', modOnly: true },
     { name: 'cooldown', description: 'Adjust per-user cooldown (mod-only)', modOnly: true },
     { name: 'reset-profile', description: 'Reset a player profile to defaults (mod-only, use sparingly)', modOnly: true },
+    { name: 'panel', description: 'Get the panel link.' },
 ];
 
 const knownCommands = new Set(commandCatalog.map((c) => c.name));
@@ -2735,6 +2736,9 @@ export async function processChatCommand(io: Server, payload: ChatCommandEvent &
             break;
         case 'reset-profile':
             await handleResetProfile(io, state, args, isMod, isBroadcaster);
+            break;
+        case 'panel':
+            emit(io, { type: 'status', text: `${state.username}: Panel link → https://custom-overlays.com/panel` });
             break;
         default:
             emit(io, { type: 'status', text: `Unknown command: !${command}` });
