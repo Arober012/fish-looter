@@ -104,6 +104,16 @@ function App() {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [catalogVersion, setCatalogVersion] = useState<string | null>(null);
   const socketRef = useRef<ReturnType<typeof io> | null>(null);
+  const [activeTab, setActiveTab] = useState<'play' | 'inventory' | 'store' | 'upgrades' | 'trade' | 'craft'>('play');
+
+  const tabs: Array<{ key: typeof activeTab; label: string }> = [
+    { key: 'play', label: 'Play' },
+    { key: 'inventory', label: 'Inventory' },
+    { key: 'store', label: 'Store' },
+    { key: 'upgrades', label: 'Upgrades' },
+    { key: 'trade', label: 'Trade' },
+    { key: 'craft', label: 'Craft' },
+  ];
 
   const handleAuthLost = (message?: string) => {
     setSession(null);
@@ -377,6 +387,231 @@ function App() {
     ? `@${state.twitchLogin}`
     : '';
 
+  const renderPlay = () => {
+    if (!state) return null;
+    return (
+      <>
+        <section className="card hero">
+          <div className="hero-row">
+            <div>
+              <div className="title">{friendlyName}</div>
+              {loginSubtitle && <div className="title-sub">{loginSubtitle}</div>}
+              <div className="muted">Prestige {state.prestigeCount ?? 0}</div>
+            </div>
+            <div className="stat-chips">
+              <span className="pill">Gold {state.gold}g</span>
+              <span className="pill">Bag {state.inventory.length}/{state.inventoryCap}</span>
+              <span className="pill">Pole {skinLabel(state.poleSkinId)}</span>
+            </div>
+          </div>
+          <div className="progress">
+            <div className="progress-label">Level {state.level} • XP {state.xp}/{state.xpNeeded}</div>
+            <div className="progress-bar"><span style={{ width: `${xpPct}%` }} /></div>
+          </div>
+        </section>
+
+        <section className="grid two">
+          <div className="card">
+            <div className="section-title">Unlocks</div>
+            <div className="pill-row">
+              <span className={`pill ${state.craftingUnlocked ? '' : 'pill-warn'}`}>Crafting {state.craftingUnlocked ? 'On' : 'Locked'}</span>
+              <span className={`pill ${state.tradingUnlocked ? '' : 'pill-warn'}`}>Trading {state.tradingUnlocked ? 'On' : 'Locked'}</span>
+              <span className={`pill ${state.enchantmentsUnlocked ? '' : 'pill-warn'}`}>Enchant {state.enchantmentsUnlocked ? 'On' : 'Locked'}</span>
+            </div>
+            {state.activeBuffs && (
+              <div className="muted small">
+                {state.activeBuffs.xp && <>XP +{Math.round((state.activeBuffs.xp.amount ?? 0) * 100)}% </>}
+                {state.activeBuffs.value && <>Value +{Math.round((state.activeBuffs.value.amount ?? 0) * 100)}%</>}
+              </div>
+            )}
+          </div>
+
+          <div className="card">
+            <div className="section-title">Resources</div>
+            <div className="pill-row wrap">
+              {state.materials && Object.entries(state.materials).map(([k, v]) => (
+                <span key={k} className="pill pill-soft">{k}: {v}</span>
+              ))}
+              {state.essences && Object.entries(state.essences).map(([k, v]) => (
+                <span key={k} className="pill pill-soft">{k}: {v}</span>
+              ))}
+              {!state.materials && !state.essences && <span className="muted small">No resources yet</span>}
+            </div>
+          </div>
+        </section>
+
+        <section className="card">
+          <div className="section-title">Rods & skins</div>
+          <div className="muted">Equipped: {skinLabel(state.poleSkinId)}</div>
+          <div className="form-row" style={{ gap: '8px', marginTop: 8, flexWrap: 'wrap' }}>
+            <select value={equipSkinId} onChange={(e) => setEquipSkinId(e.target.value as PoleSkinId)}>
+              {ownedSkins.map((id) => (
+                <option key={id} value={id}>{skinLabel(id)}</option>
+              ))}
+            </select>
+            <button className="primary" disabled={loading || ownedSkins.length === 0} onClick={() => doPanel('/api/panel/equip', { skin: equipSkinId }, `Equipped ${skinLabel(equipSkinId)}`)}>Equip</button>
+          </div>
+          <div className="muted" style={{ marginTop: 6 }}>Owned: {ownedSkins.map(skinLabel).join(', ') || 'None'}</div>
+        </section>
+      </>
+    );
+  };
+
+  const renderInventory = () => {
+    if (!state) return null;
+    return (
+      <>
+        <section className="card">
+          <div className="section-title">Inventory actions</div>
+          <div className="form-row wrap">
+            <select value={sellItemId} onChange={(e) => setSellItemId(e.target.value)} disabled={loading}>
+              <option value="">Select item to sell</option>
+              {state.inventory.map((i) => (
+                <option key={i.id} value={i.name}>{i.name} ({i.rarity})</option>
+              ))}
+            </select>
+            <button className="ghost" disabled={loading || !sellItemId} onClick={() => doPanel('/api/panel/sell', { name: sellItemId }, `Sold ${sellItemId}`)}>Sell Item</button>
+            <button className="ghost" disabled={loading || state.inventory.length === 0} onClick={() => doPanel('/api/panel/sell', { sellAll: true }, 'Sold all sellable items')}>Sell All</button>
+          </div>
+          <div className="form-row wrap">
+            <select value={useItemName} onChange={(e) => setUseItemName(e.target.value)} disabled={loading}>
+              <option value="">Select usable item</option>
+              {usableItems.map((i) => (
+                <option key={i.id} value={i.name}>{i.name} ({i.rarity})</option>
+              ))}
+            </select>
+            <button className="primary" disabled={loading || !useItemName} onClick={() => doPanel('/api/panel/use', { name: useItemName }, `Used ${useItemName}`)}>Use Item</button>
+            <div className="muted tiny">Tip: chat still supports !use &lt;item&gt; for interactive engagement.</div>
+          </div>
+        </section>
+
+        <section className="card">
+          <div className="section-title">Inventory</div>
+          {state.inventory.length === 0 ? <div className="muted">Empty</div> : (
+            <div className="grid three">
+              {state.inventory.map((i) => (
+                <div key={i.id} className="subcard">
+                  <div className="item-title">{i.name}</div>
+                  <div className="muted tiny">{i.rarity} • {i.value}g</div>
+                  {i.description && <div className="muted tiny">{i.description}</div>}
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      </>
+    );
+  };
+
+  const renderStore = () => (
+    <section className="card">
+      <div className="section-title">Store</div>
+      <div className="muted tiny">Auto refresh in {autoRefreshText} • Manual refresh {manualRefreshText}</div>
+      {store.length === 0 ? <div className="muted">No store items available.</div> : (
+        <div className="grid three">
+          {store.map((item) => (
+            <div key={item.key} className="subcard">
+              <div className="item-title">{item.name}</div>
+              <div className="muted tiny">{item.rarity} • {item.cost}g{item.minLevel ? ` • Req ${item.minLevel}` : ''}</div>
+              {item.description && <div className="muted tiny">{item.description}</div>}
+              <button className="primary" disabled={loading} onClick={() => doPanel('/api/panel/buy', { itemKey: item.key }, `Bought ${item.name}`)}>Buy</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+
+  const renderUpgrades = () => (
+    <section className="card">
+      <div className="section-title">Upgrades</div>
+      {upgrades.length === 0 ? <div className="muted">No upgrades available.</div> : (
+        <div className="grid three">
+          {upgrades.map((u) => (
+            <div key={u.key} className="subcard">
+              <div className="item-title">{u.name}</div>
+              <div className="muted tiny">{u.stat} • Cost {u.cost}g • Max {u.maxLevel}</div>
+              <div className="muted tiny">{u.description}</div>
+              <button className="primary" disabled={loading} onClick={() => doPanel('/api/panel/upgrades/buy', { upgradeKey: u.key }, `Bought ${u.name}`)}>Buy</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+
+  const renderTrade = () => {
+    if (!state) return null;
+    return (
+      <section className="card">
+        <div className="section-title">Trading board</div>
+        <div className="form-row wrap">
+          <select value={listItemId} onChange={(e) => setListItemId(e.target.value)} disabled={loading}>
+            <option value="">Select item to list</option>
+            {state.inventory.map((i) => (
+              <option key={i.id} value={i.id}>{i.name} ({i.rarity})</option>
+            ))}
+          </select>
+          <input className="input" value={listPrice} onChange={(e) => setListPrice(e.target.value)} disabled={loading} />
+          <button className="primary" disabled={loading || !listItemId} onClick={() => doPanel('/api/panel/trade/list', { itemId: listItemId, price: Number(listPrice) }, 'Listed item')}>List Item</button>
+          <button className="ghost" disabled={loading} onClick={() => refresh('Trade board refreshed')}>Refresh Board</button>
+        </div>
+        {tradeBoard.length === 0 ? <div className="muted">No active listings.</div> : (
+          <div className="grid three">
+            {tradeBoard.map((l) => {
+              const isSeller = l.seller === state.username;
+              return (
+                <div key={l.id} className="subcard">
+                  <div className="item-title">{l.item.name}</div>
+                  <div className="muted tiny">{l.item.rarity} • {l.price}g • Seller: {l.seller}</div>
+                  <div className="button-row">
+                    {isSeller ? (
+                      <button className="ghost" disabled={loading} onClick={() => doPanel('/api/panel/trade/cancel', { listingId: l.id }, 'Listing cancelled')}>Cancel</button>
+                    ) : (
+                      <button className="primary" disabled={loading} onClick={() => doPanel('/api/panel/trade/buy', { listingId: l.id }, 'Bought item')}>Buy</button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+    );
+  };
+
+  const renderCraft = () => (
+    <section className="grid two">
+      <div className="card">
+        <div className="section-title">Crafting</div>
+        <div className="muted small">Spend materials to craft boosts.</div>
+        <div className="grid three">
+          {recipeList.map((r) => (
+            <div key={r.id} className="subcard">
+              <div className="item-title">{r.name}</div>
+              <div className="muted small">{r.desc}</div>
+              <div className="muted tiny">Costs: {Object.entries(r.costs).map(([k, v]) => `${k} x${v}`).join(', ')}</div>
+              <button className="primary" disabled={loading || !(state && state.craftingUnlocked)} onClick={() => doPanel('/api/panel/craft', { recipeId: r.id }, `Crafted ${r.name}`)}>Craft</button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="section-title">Enchant (rod)</div>
+        <div className="muted small">Use essences to add rarity/value bonuses.</div>
+        <div className="form-row">
+          <select value={enchantEssence} onChange={(e) => setEnchantEssence(e.target.value as any)} disabled={loading}>
+            {essenceOptions.map((e) => (
+              <option key={e.id} value={e.id}>{e.label}</option>
+            ))}
+          </select>
+          <button className="primary" disabled={loading || !(state && state.enchantmentsUnlocked)} onClick={() => doPanel('/api/panel/enchant', { essence: enchantEssence, targetKind: 'rod' }, 'Enchanted rod')}>Enchant Rod</button>
+        </div>
+      </div>
+    </section>
+  );
+
   if (!session && !devMode) {
     return (
       <div className="panel-shell">
@@ -390,236 +625,56 @@ function App() {
 
   return (
     <div className="panel-shell">
-      <header className="panel-header">
-        <div>
-          <div className="eyebrow">Fishing Panel</div>
-          <div className="status-text">{status}</div>
+      <div className="sticky-top">
+        <header className="panel-header">
+          <div>
+            <div className="eyebrow">Fishing Panel</div>
+            <div className="status-text">{status}</div>
+          </div>
+          <div className="header-actions">
+            {devMode && <span className="pill pill-dev">Dev mode</span>}
+            {!devMode && session && (
+              <>
+                <button className="ghost" disabled={loading} onClick={reauth}>Re-auth</button>
+                <button className="ghost" disabled={loading} onClick={logout}>Logout</button>
+              </>
+            )}
+            <button className="ghost" disabled={loading} onClick={() => refresh('Synced')}>Refresh</button>
+          </div>
+        </header>
+
+        <div className="tab-strip">
+          {tabs.map((t) => (
+            <button
+              key={t.key}
+              className={`tab ${activeTab === t.key ? 'active' : ''}`}
+              onClick={() => setActiveTab(t.key)}
+              disabled={loading}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
-        <div className="header-actions">
-          {devMode && <span className="pill pill-dev">Dev mode</span>}
-          {!devMode && session && (
-            <>
-              <button className="ghost" disabled={loading} onClick={reauth}>Re-auth</button>
-              <button className="ghost" disabled={loading} onClick={logout}>Logout</button>
-            </>
-          )}
-          <button className="ghost" disabled={loading} onClick={() => refresh('Synced')}>Refresh</button>
-        </div>
-      </header>
+
+        <section className="card quick-card">
+          <div className="section-title">Quick actions</div>
+          <div className="button-row">
+            <button className="primary" disabled={!state || loading} onClick={() => doCastReel('cast')}>Cast</button>
+            <button className="primary" disabled={!state || loading} onClick={() => doCastReel('reel')}>Reel</button>
+            <button className="ghost" disabled={!state || loading} onClick={() => doPanel('/api/panel/store/refresh', {}, 'Store refreshed')}>Refresh Store</button>
+            <button className="ghost" disabled={!state || loading} onClick={() => refresh('Inventory synced')}>Sync Inventory</button>
+          </div>
+        </section>
+      </div>
 
       {state && (
         <div className="layout">
-          <section className="card hero">
-            <div className="hero-row">
-              <div>
-                <div className="title">{friendlyName}</div>
-                {loginSubtitle && <div className="title-sub">{loginSubtitle}</div>}
-                <div className="muted">Prestige {state.prestigeCount ?? 0}</div>
-              </div>
-              <div className="stat-chips">
-                <span className="pill">Gold {state.gold}g</span>
-                <span className="pill">Bag {state.inventory.length}/{state.inventoryCap}</span>
-                <span className="pill">Pole {skinLabel(state.poleSkinId)}</span>
-              </div>
-            </div>
-            <div className="progress">
-              <div className="progress-label">Level {state.level} • XP {state.xp}/{state.xpNeeded}</div>
-              <div className="progress-bar"><span style={{ width: `${xpPct}%` }} /></div>
-            </div>
-          </section>
-
-          <section className="card">
-            <div className="section-title">Quick actions</div>
-            <div className="button-row">
-              <button className="primary" disabled={loading} onClick={() => doCastReel('cast')}>Cast</button>
-              <button className="primary" disabled={loading} onClick={() => doCastReel('reel')}>Reel</button>
-              <button className="ghost" disabled={loading} onClick={() => doPanel('/api/panel/store/refresh', {}, 'Store refreshed')}>Refresh Store</button>
-              <button className="ghost" disabled={loading} onClick={() => refresh('Inventory synced')}>Sync Inventory</button>
-            </div>
-          </section>
-
-          <section className="card">
-            <div className="section-title">Rods & skins</div>
-            <div className="muted">Equipped: {skinLabel(state.poleSkinId)}</div>
-            <div className="form-row" style={{ gap: '8px', marginTop: 8, flexWrap: 'wrap' }}>
-              <select value={equipSkinId} onChange={(e) => setEquipSkinId(e.target.value as PoleSkinId)}>
-                {ownedSkins.map((id) => (
-                  <option key={id} value={id}>{skinLabel(id)}</option>
-                ))}
-              </select>
-              <button className="primary" disabled={loading || ownedSkins.length === 0} onClick={() => doPanel('/api/panel/equip', { skin: equipSkinId }, `Equipped ${skinLabel(equipSkinId)}`)}>Equip</button>
-            </div>
-            <div className="muted" style={{ marginTop: 6 }}>Owned: {ownedSkins.map(skinLabel).join(', ') || 'None'}</div>
-          </section>
-
-          <section className="grid two">
-            <div className="card">
-              <div className="section-title">Unlocks</div>
-              <div className="pill-row">
-                <span className={`pill ${state.craftingUnlocked ? '' : 'pill-warn'}`}>Crafting {state.craftingUnlocked ? 'On' : 'Locked'}</span>
-                <span className={`pill ${state.tradingUnlocked ? '' : 'pill-warn'}`}>Trading {state.tradingUnlocked ? 'On' : 'Locked'}</span>
-                <span className={`pill ${state.enchantmentsUnlocked ? '' : 'pill-warn'}`}>Enchant {state.enchantmentsUnlocked ? 'On' : 'Locked'}</span>
-              </div>
-              {state.activeBuffs && (
-                <div className="muted small">
-                  {state.activeBuffs.xp && <>XP +{Math.round((state.activeBuffs.xp.amount ?? 0) * 100)}% </>}
-                  {state.activeBuffs.value && <>Value +{Math.round((state.activeBuffs.value.amount ?? 0) * 100)}%</>}
-                </div>
-              )}
-            </div>
-
-            <div className="card">
-              <div className="section-title">Resources</div>
-              <div className="pill-row wrap">
-                {state.materials && Object.entries(state.materials).map(([k, v]) => (
-                  <span key={k} className="pill pill-soft">{k}: {v}</span>
-                ))}
-                {state.essences && Object.entries(state.essences).map(([k, v]) => (
-                  <span key={k} className="pill pill-soft">{k}: {v}</span>
-                ))}
-                {!state.materials && !state.essences && <span className="muted small">No resources yet</span>}
-              </div>
-            </div>
-          </section>
-
-          <section className="grid two">
-            <div className="card">
-              <div className="section-title">Crafting</div>
-              <div className="muted small">Spend materials to craft boosts.</div>
-              <div className="grid three">
-                {recipeList.map((r) => (
-                  <div key={r.id} className="subcard">
-                    <div className="item-title">{r.name}</div>
-                    <div className="muted small">{r.desc}</div>
-                    <div className="muted tiny">Costs: {Object.entries(r.costs).map(([k, v]) => `${k} x${v}`).join(', ')}</div>
-                    <button className="primary" disabled={loading || !(state.craftingUnlocked)} onClick={() => doPanel('/api/panel/craft', { recipeId: r.id }, `Crafted ${r.name}`)}>Craft</button>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="card">
-              <div className="section-title">Enchant (rod)</div>
-              <div className="muted small">Use essences to add rarity/value bonuses.</div>
-              <div className="form-row">
-                <select value={enchantEssence} onChange={(e) => setEnchantEssence(e.target.value as any)} disabled={loading}>
-                  {essenceOptions.map((e) => (
-                    <option key={e.id} value={e.id}>{e.label}</option>
-                  ))}
-                </select>
-                <button className="primary" disabled={loading || !(state.enchantmentsUnlocked)} onClick={() => doPanel('/api/panel/enchant', { essence: enchantEssence, targetKind: 'rod' }, 'Enchanted rod')}>Enchant Rod</button>
-              </div>
-            </div>
-          </section>
-
-          <section className="card">
-            <div className="section-title">Trading board</div>
-            <div className="form-row wrap">
-              <select value={listItemId} onChange={(e) => setListItemId(e.target.value)} disabled={loading}>
-                <option value="">Select item to list</option>
-                {state.inventory.map((i) => (
-                  <option key={i.id} value={i.id}>{i.name} ({i.rarity})</option>
-                ))}
-              </select>
-              <input className="input" value={listPrice} onChange={(e) => setListPrice(e.target.value)} disabled={loading} />
-              <button className="primary" disabled={loading || !listItemId} onClick={() => doPanel('/api/panel/trade/list', { itemId: listItemId, price: Number(listPrice) }, 'Listed item')}>List Item</button>
-              <button className="ghost" disabled={loading} onClick={() => refresh('Trade board refreshed')}>Refresh Board</button>
-            </div>
-            {tradeBoard.length === 0 ? <div className="muted">No active listings.</div> : (
-              <div className="grid three">
-                {tradeBoard.map((l) => {
-                  const isSeller = l.seller === state.username;
-                  return (
-                    <div key={l.id} className="subcard">
-                      <div className="item-title">{l.item.name}</div>
-                      <div className="muted tiny">{l.item.rarity} • {l.price}g • Seller: {l.seller}</div>
-                      <div className="button-row">
-                        {isSeller ? (
-                          <button className="ghost" disabled={loading} onClick={() => doPanel('/api/panel/trade/cancel', { listingId: l.id }, 'Listing cancelled')}>Cancel</button>
-                        ) : (
-                          <button className="primary" disabled={loading} onClick={() => doPanel('/api/panel/trade/buy', { listingId: l.id }, 'Bought item')}>Buy</button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </section>
-
-          <section className="card">
-            <div className="section-title">Inventory actions</div>
-            <div className="form-row wrap">
-              <select value={sellItemId} onChange={(e) => setSellItemId(e.target.value)} disabled={loading}>
-                <option value="">Select item to sell</option>
-                {state.inventory.map((i) => (
-                  <option key={i.id} value={i.name}>{i.name} ({i.rarity})</option>
-                ))}
-              </select>
-              <button className="ghost" disabled={loading || !sellItemId} onClick={() => doPanel('/api/panel/sell', { name: sellItemId }, `Sold ${sellItemId}`)}>Sell Item</button>
-              <button className="ghost" disabled={loading || state.inventory.length === 0} onClick={() => doPanel('/api/panel/sell', { sellAll: true }, 'Sold all sellable items')}>Sell All</button>
-            </div>
-            <div className="form-row wrap">
-              <select value={useItemName} onChange={(e) => setUseItemName(e.target.value)} disabled={loading}>
-                <option value="">Select usable item</option>
-                {usableItems.map((i) => (
-                  <option key={i.id} value={i.name}>{i.name} ({i.rarity})</option>
-                ))}
-              </select>
-              <button className="primary" disabled={loading || !useItemName} onClick={() => doPanel('/api/panel/use', { name: useItemName }, `Used ${useItemName}`)}>Use Item</button>
-              <div className="muted tiny">Tip: chat still supports !use &lt;item&gt; for interactive engagement.</div>
-            </div>
-          </section>
-
-          <section className="grid two">
-            <div className="card">
-              <div className="section-title">Inventory</div>
-              {state.inventory.length === 0 ? <div className="muted">Empty</div> : (
-                <div className="grid three">
-                  {state.inventory.map((i) => (
-                    <div key={i.id} className="subcard">
-                      <div className="item-title">{i.name}</div>
-                      <div className="muted tiny">{i.rarity} • {i.value}g</div>
-                      {i.description && <div className="muted tiny">{i.description}</div>}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="card">
-              <div className="section-title">Store</div>
-              <div className="muted tiny">Auto refresh in {autoRefreshText} • Manual refresh {manualRefreshText}</div>
-              {store.length === 0 ? <div className="muted">No store items available.</div> : (
-                <div className="grid three">
-                  {store.map((item) => (
-                    <div key={item.key} className="subcard">
-                      <div className="item-title">{item.name}</div>
-                      <div className="muted tiny">{item.rarity} • {item.cost}g{item.minLevel ? ` • Req ${item.minLevel}` : ''}</div>
-                      {item.description && <div className="muted tiny">{item.description}</div>}
-                      <button className="primary" disabled={loading} onClick={() => doPanel('/api/panel/buy', { itemKey: item.key }, `Bought ${item.name}`)}>Buy</button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </section>
-
-          <section className="card">
-            <div className="section-title">Upgrades</div>
-            {upgrades.length === 0 ? <div className="muted">No upgrades available.</div> : (
-              <div className="grid three">
-                {upgrades.map((u) => (
-                  <div key={u.key} className="subcard">
-                    <div className="item-title">{u.name}</div>
-                    <div className="muted tiny">{u.stat} • Cost {u.cost}g • Max {u.maxLevel}</div>
-                    <div className="muted tiny">{u.description}</div>
-                    <button className="primary" disabled={loading} onClick={() => doPanel('/api/panel/upgrades/buy', { upgradeKey: u.key }, `Bought ${u.name}`)}>Buy</button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
+          {activeTab === 'play' && renderPlay()}
+          {activeTab === 'inventory' && renderInventory()}
+          {activeTab === 'store' && renderStore()}
+          {activeTab === 'upgrades' && renderUpgrades()}
+          {activeTab === 'trade' && renderTrade()}
+          {activeTab === 'craft' && renderCraft()}
         </div>
       )}
     </div>
