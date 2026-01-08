@@ -6,6 +6,7 @@ import { ChannelRecord, upsertChannel } from './channel-store';
 type ConnectedClient = {
     channel: string;
     client: Client;
+    authMode: 'oauth' | 'anonymous';
 };
 
 export class ChatBridge {
@@ -16,6 +17,10 @@ export class ChatBridge {
     constructor(io: Server, onChatCommand: (io: Server, payload: ChatCommandEvent) => void | Promise<void>) {
         this.io = io;
         this.onChatCommand = onChatCommand;
+    }
+
+    getStatus() {
+        return Array.from(this.clients.values()).map((c) => ({ channel: c.channel, authMode: c.authMode }));
     }
 
     private async validateToken(accessToken: string): Promise<boolean> {
@@ -106,6 +111,8 @@ export class ChatBridge {
                 : `oauth:${effectiveRecord.botAccessToken}`
             : undefined;
 
+        const authMode: ConnectedClient['authMode'] = oauth ? 'oauth' : 'anonymous';
+
         const client = new Client({
             options: { debug: process.env.TMI_DEBUG === 'true' },
             ...(oauth ? { identity: { username, password: oauth } } : {}),
@@ -163,7 +170,7 @@ export class ChatBridge {
 
         try {
             await client.connect();
-            this.clients.set(chan, { channel: chan, client });
+            this.clients.set(chan, { channel: chan, client, authMode });
         } catch (err) {
             console.error(`[twitch] Connection failed for #${chan}`, err);
         }

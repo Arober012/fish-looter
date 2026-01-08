@@ -217,6 +217,39 @@ app.get('/api/debug/helix', (_req: Request, res: Response) => {
     res.json(getHelixDebug());
 });
 
+app.get('/api/debug/storage', async (_req: Request, res: Response) => {
+    const dataDir = getDataDir();
+    const channelsPath = path.join(dataDir, 'channels.json');
+    let channelsFile: { exists: boolean; size?: number; mtimeMs?: number } = { exists: false };
+    try {
+        const stat = fs.statSync(channelsPath);
+        channelsFile = { exists: true, size: stat.size, mtimeMs: stat.mtimeMs };
+    } catch {
+        // missing is expected until first auth
+    }
+
+    let channelCount = 0;
+    try {
+        const records = await listChannels();
+        channelCount = records.length;
+    } catch {
+        // ignore
+    }
+
+    res.json({ dataDir, channelsPath, channelsFile, channelCount, saveDir });
+});
+
+app.get('/api/debug/twitch', async (_req: Request, res: Response) => {
+    let storedChannels: string[] = [];
+    try {
+        const records = await listChannels();
+        storedChannels = records.map((r) => r.login);
+    } catch {
+        // ignore
+    }
+    res.json({ connected: chatBridge.getStatus(), storedChannels });
+});
+
 // Extension-friendly state fetch (requires Twitch Extension bearer token)
 app.get('/api/state', requireSession, async (req: Request, res: Response) => {
     const auth = req.session;
