@@ -137,6 +137,15 @@ const tradeBoard: Array<TradeListing & { sellerScopedKey: string }> = [];
 let tradeLoadedChan: string | null = null;
 const storeRefreshCooldownMs = 8 * 60 * 60 * 1000;
 const lastStoreRefresh = new Map<string, number>();
+const premiumStoreSlots = 1; // extra premium item(s) per rotation
+const premiumRarityFloor: Rarity = 'epic';
+const premiumPriceBonus = 0.35; // premium items cost more
+const storeTierPriceStep = 0.15; // +15% per biome tier above tier 1
+const storeLevelPriceStart = 20; // levels below this do not scale prices
+const storeLevelPriceStep = 0.004; // +0.4% per level above the start
+const storeLevelPriceCap = 0.6; // max +60% from levels
+const storePrestigePriceStep = 0.08; // +8% per prestige
+const storePriceMaxMultiplier = 3.25; // clamp overall scaling
 
 const coveRarityConfigs: RarityConfig[] = [
     { rarity: 'common', weight: 52, valueRange: [5, 12], xp: 6 },
@@ -222,13 +231,17 @@ export function getHelixDebug() {
 
 function addCustomLootName(rarity: Rarity, name: string) {
     const trimmed = name.trim();
-    if (!trimmed) return false;
+    if (!trimmed) return { ok: false as const, reason: 'empty' as const };
     const safe = trimmed.slice(0, 48);
+    const normalized = safe.toLowerCase();
+    const existsAcrossPools = Object.values(customLoot).some((pool) => pool.some((entry) => entry.toLowerCase() === normalized));
+    if (existsAcrossPools) {
+        return { ok: false as const, reason: 'duplicate' as const };
+    }
     const list = customLoot[rarity];
-    if (list.includes(safe)) return true;
     if (list.length >= 64) list.shift();
     list.push(safe);
-    return true;
+    return { ok: true as const };
 }
 
 const commandCatalog: CatalogChatCommand[] = [
@@ -661,7 +674,7 @@ function getStoreConfig(catalog: Catalog) {
 }
 
 function storeVersionKey(catalog: Catalog, cfg: ReturnType<typeof getStoreConfig>) {
-    return `${catalog.version}-${catalog.updatedAt}-rot:${cfg.rotationMs}-slots:${cfg.slots}-always:${cfg.alwaysKeys.join(',')}`;
+    return `${catalog.version}-${catalog.updatedAt}-rot:${cfg.rotationMs}-slots:${cfg.slots}-always:${cfg.alwaysKeys.join(',')}-premium:${premiumStoreSlots}-${premiumRarityFloor}`;
 }
 
 function labelFromId(id: string) {
@@ -788,14 +801,46 @@ function pickStoreItems(catalog: Catalog, cfg: ReturnType<typeof getStoreConfig>
     const pool = base.filter((i) => !cfg.alwaysKeys.includes(i.key));
 
     const selection: StoreItem[] = [...always];
+    const chosenKeys = new Set(selection.map((i) => i.key));
     const targetCount = Math.min(cfg.slots, base.length);
     while (selection.length < targetCount && pool.length) {
         const idx = Math.floor(Math.random() * pool.length);
         const [picked] = pool.splice(idx, 1);
         selection.push(picked);
+        chosenKeys.add(picked.key);
+    }
+
+    // Add premium slot(s) with higher-rarity picks
+    const premiumFloorIdx = Math.max(0, rarityOrder.indexOf(premiumRarityFloor));
+    const premiumPool = base.filter((i) => rarityOrder.indexOf(i.rarity) >= premiumFloorIdx && !chosenKeys.has(i.key));
+    for (let i = 0; i < premiumStoreSlots && premiumPool.length; i += 1) {
+        const idx = Math.floor(Math.random() * premiumPool.length);
+        const [picked] = premiumPool.splice(idx, 1);
+        selection.push({ ...picked, premium: true });
+        chosenKeys.add(picked.key);
     }
 
     return selection;
+}
+
+function storePriceMultiplier(state?: PlayerState): number {
+    if (!state) return 1;
+    const biome = getBiome(state);
+    const tierBonus = Math.max(0, biome.tier - 1) * storeTierPriceStep;
+    const levelBonus = Math.min(storeLevelPriceCap, Math.max(0, state.level - storeLevelPriceStart) * storeLevelPriceStep);
+    const prestigeBonus = (state.prestigeCount ?? 0) * storePrestigePriceStep;
+    const multiplier = 1 + tierBonus + levelBonus + prestigeBonus;
+    return Math.min(storePriceMaxMultiplier, multiplier);
+}
+
+function priceStoreItem(item: StoreItem, state?: PlayerState): number {
+    const premiumBoost = item.premium ? 1 + premiumPriceBonus : 1;
+    const scaled = Math.round((item.cost ?? 0) * storePriceMultiplier(state) * premiumBoost);
+    return Math.max(1, scaled);
+}
+
+function priceStoreItemsForState(items: StoreItem[], state?: PlayerState): StoreItem[] {
+    return items.map((item) => ({ ...item, cost: priceStoreItem(item, state) }));
 }
 
 function currentStoreItems(): StoreItem[] {
@@ -825,6 +870,10 @@ const tugTimers = new Map<string, NodeJS.Timeout>();
 const decayTimers = new Map<string, NodeJS.Timeout>();
 const baitTimers = new Map<string, NodeJS.Timeout>();
 const charmTimers = new Map<string, NodeJS.Timeout>();
+const tugMinDelayMs = 2000;
+const tugMaxDelayMs = 6000;
+const tugResponseWindowMs = 10000; // time to react after tug fires (covers stream delay)
+const tugFailSafeBufferMs = 2000; // prevents getting stuck if tug timer misfires
 
 type TimedBuff = { amount: number; timer: NodeJS.Timeout; endsAt: number; label?: string };
 const xpBuffTimers = new Map<string, TimedBuff[]>();
@@ -1069,12 +1118,13 @@ export async function getPanelData(username: string, channel?: string): Promise<
     const catalog = getCatalogSnapshot();
     const storeConfig = getStoreConfig(catalog);
     const publicState = ensurePublic(state);
-    const store = currentStoreItems();
-    const rotation = storeRotation ?? { items: store, expiresAt: Date.now() + storeConfig.rotationMs };
+    const baseStore = currentStoreItems();
+    const rotation = storeRotation ?? { items: baseStore, expiresAt: Date.now() + storeConfig.rotationMs };
     if (!storeRotation) {
         storeRotation = rotation;
         storeRotationVersion = storeVersionKey(catalog, storeConfig);
     }
+    const store = priceStoreItemsForState(rotation.items, state);
     const last = lastStoreRefresh.get(state.scopedKey) ?? 0;
     const remaining = Math.max(0, storeRefreshCooldownMs - (Date.now() - last));
     const upgrades = getUpgrades(state);
@@ -1462,27 +1512,35 @@ async function handleCast(io: Server, state: PlayerState) {
     clearTug(state.scopedKey);
     clearDecay(state.scopedKey);
 
-    const eta = randomInt(2000, 6000);
+    const scheduleDecay = (delayMs: number) => {
+        clearDecay(state.scopedKey);
+        const decay = setTimeout(() => {
+            if (!state.isCasting) return;
+            state.isCasting = false;
+            state.hasTug = false;
+            emit(io, { type: 'catch', user: state.username, success: false });
+            emit(io, { type: 'status', text: `${state.username}'s line went slack.` });
+            pushLog(io, `${state.username} let the line go slack (timed out).`);
+            clearTug(state.scopedKey);
+            if (state.activeBait) {
+                state.activeBait.uses -= 1;
+                if (state.activeBait.uses <= 0) state.activeBait = undefined;
+            }
+        }, delayMs);
+        decayTimers.set(state.scopedKey, decay);
+    };
+
+    const eta = randomInt(tugMinDelayMs, tugMaxDelayMs);
+    // Fail-safe: if tug never fires, still clear state after expected window plus buffer
+    scheduleDecay(eta + tugResponseWindowMs + tugFailSafeBufferMs);
+
     const timer = setTimeout(() => {
         state.hasTug = true;
         emit(io, { type: 'tug', user: state.username });
+        // Give players a generous window after seeing the tug to handle stream delay
+        scheduleDecay(tugResponseWindowMs);
     }, eta);
     tugTimers.set(state.scopedKey, timer);
-
-    const decay = setTimeout(() => {
-        if (!state.isCasting) return;
-        state.isCasting = false;
-        state.hasTug = false;
-        emit(io, { type: 'catch', user: state.username, success: false });
-        emit(io, { type: 'status', text: `${state.username}'s line went slack.` });
-        pushLog(io, `${state.username} let the line go slack (timed out).`);
-        clearTug(state.username);
-        if (state.activeBait) {
-            state.activeBait.uses -= 1;
-            if (state.activeBait.uses <= 0) state.activeBait = undefined;
-        }
-    }, 12000);
-    decayTimers.set(state.scopedKey, decay);
 
     emit(io, { type: 'cast', user: state.username, etaMs: eta });
     pushLog(io, `${state.username} casts their line.`);
@@ -1626,7 +1684,8 @@ async function handleStore(io: Server, state?: PlayerState) {
         if (i.key === 'bag-upgrade' && state.inventoryCap >= inventoryCapMax) return false;
         return isStoreItemUnlocked(state, i);
     });
-    emit(io, { type: 'store', items: filtered, upgrades: getUpgrades(state), expiresAt: rotation.expiresAt });
+    const priced = priceStoreItemsForState(filtered, state);
+    emit(io, { type: 'store', items: priced, upgrades: getUpgrades(state), expiresAt: rotation.expiresAt });
 }
 
 async function handleStoreRefresh(io: Server, state: PlayerState) {
@@ -1652,7 +1711,8 @@ async function handleStoreRefresh(io: Server, state: PlayerState) {
         return isStoreItemUnlocked(state, i);
     });
 
-    emit(io, { type: 'store', items: filtered, upgrades: getUpgrades(state), expiresAt });
+    const priced = priceStoreItemsForState(filtered, state);
+    emit(io, { type: 'store', items: priced, upgrades: getUpgrades(state), expiresAt });
     const hoursLabel = cfg.rotationHours >= 1 ? `${cfg.rotationHours}h` : `${Math.round((cfg.rotationHours * 60))}m`;
     emit(io, { type: 'status', text: `${state.username} refreshed the store. Next auto refresh in ${hoursLabel}; personal cooldown 8h.` });
     pushLog(io, `${state.username} manually refreshed the store (next auto in ${hoursLabel}, personal cooldown 8h).`);
@@ -1673,7 +1733,8 @@ async function handleUpgrades(io: Server, state?: PlayerState) {
         if (i.key === 'bag-upgrade' && state.inventoryCap >= inventoryCapMax) return false;
         return isStoreItemUnlocked(state, i);
     });
-    emit(io, { type: 'store', items: filtered, upgrades: getUpgrades(state), expiresAt: rotation.expiresAt });
+    const priced = priceStoreItemsForState(filtered, state);
+    emit(io, { type: 'store', items: priced, upgrades: getUpgrades(state), expiresAt: rotation.expiresAt });
 }
 
 async function handleInventory(io: Server, state: PlayerState) {
@@ -1829,16 +1890,26 @@ async function handleBuy(io: Server, state: PlayerState, args: string[]) {
             emit(io, { type: 'status', text: `Level ${skin.levelReq} required for ${skin.name}.` });
             return;
         }
-        if (state.gold < skin.cost) {
+        const skinCost = priceStoreItem(item ?? {
+            key: `skin-${skin.id}`,
+            name: `${skin.name} Skin`,
+            cost: skin.cost,
+            rarity: skin.rarity,
+            value: 0,
+            description: skin.description,
+            type: 'skin',
+            minLevel: skin.levelReq,
+        }, state);
+        if (state.gold < skinCost) {
             emit(io, { type: 'status', text: `Not enough gold for ${skin.name}.` });
             return;
         }
-        state.gold -= skin.cost;
+        state.gold -= skinCost;
         state.poleSkinId = skin.id;
         state.ownedPoleSkins = Array.from(new Set([...(state.ownedPoleSkins ?? []), skin.id]));
         emit(io, { type: 'skin', user: state.username, skinId: skin.id });
         emit(io, { type: 'inventory', state: ensurePublic(state) });
-        pushLog(io, `${state.username} unlocked ${skin.name} skin.`);
+        pushLog(io, `${state.username} unlocked ${skin.name} skin for ${skinCost}g.`);
         return;
     }
 
@@ -1846,6 +1917,8 @@ async function handleBuy(io: Server, state: PlayerState, args: string[]) {
         emit(io, { type: 'status', text: `Item not available right now: ${query} (store rotates every 4h).` });
         return;
     }
+
+    const unitCost = priceStoreItem(item, state);
 
     if (item.key === 'bag-upgrade') {
         const remaining = Math.max(0, Math.floor((inventoryCapMax - state.inventoryCap) / inventoryCapStep));
@@ -1857,7 +1930,7 @@ async function handleBuy(io: Server, state: PlayerState, args: string[]) {
             emit(io, { type: 'status', text: `Only ${remaining} inventory expansion${remaining === 1 ? '' : 's'} left (max 30).` });
             return;
         }
-        const totalCost = item.cost * quantity;
+        const totalCost = unitCost * quantity;
         if (state.gold < totalCost) {
             emit(io, { type: 'status', text: `Not enough gold for ${quantity}x ${item.name}.` });
             return;
@@ -1891,7 +1964,7 @@ async function handleBuy(io: Server, state: PlayerState, args: string[]) {
         return;
     }
 
-    const totalCost = item.cost * quantity;
+    const totalCost = unitCost * quantity;
     if (state.gold < totalCost) {
         emit(io, { type: 'status', text: `Not enough gold for ${quantity}x ${item.name}.` });
         return;
@@ -2142,13 +2215,20 @@ async function handleUse(io: Server, state: PlayerState, args: string[]) {
             return;
         }
         const customName = args.slice(2).join(' ');
-        const scrollIdx = state.inventory.findIndex((i) => i.type === 'scroll' && (i.rarity === targetRarity || (targetRarity === 'mythic' && i.rarity === 'epic')));
+        const scrollIdx = state.inventory.findIndex((i) => i.type === 'scroll' && i.rarity === targetRarity);
         if (scrollIdx < 0) {
             emit(io, { type: 'status', text: `No scroll for rarity ${targetRarity} available.` });
             return;
         }
+        const result = addCustomLootName(targetRarity, customName);
+        if (!result.ok) {
+            const reason = result.reason === 'duplicate'
+                ? `Item '${customName}' already exists in the custom loot pool.`
+                : 'Item name is empty.';
+            emit(io, { type: 'status', text: reason });
+            return;
+        }
         state.inventory.splice(scrollIdx, 1);
-        addCustomLootName(targetRarity, customName);
         emit(io, { type: 'status', text: `${state.username} inscribed '${customName}' into the ${targetRarity} loot pool.` });
         pushLog(io, `${state.username} added custom ${targetRarity} loot: ${customName}.`);
         emit(io, { type: 'inventory', state: ensurePublic(state) });

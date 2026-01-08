@@ -167,6 +167,7 @@ export interface StoreItem {
     type?: 'bait' | 'skin' | 'upgrade' | 'item' | 'chest' | 'token' | 'compass' | 'map' | 'scroll';
     minLevel?: number;
     imageUrl?: string;
+    premium?: boolean;
 }
 
 export type TradeStatus = 'active' | 'sold' | 'cancelled' | 'expired';
