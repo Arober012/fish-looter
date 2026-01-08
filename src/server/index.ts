@@ -432,14 +432,37 @@ app.post('/api/panel/trade/cancel', requireSession, async (req: Request, res: Re
 
 // Initialize Twitch bridge to listen to chat and forward to command processor
 listChannels()
-    .then((records) => {
+    .then(async (records) => {
         if (!records.length) {
             console.warn('[twitch] No saved channels found (data/channels.json empty or missing). Chat commands will not work until you log in via /api/auth/login to store tokens.');
+
+            // If env vars are present (common on Railway), seed the persistent channel store so chat works without re-running OAuth.
+            const seededLoginRaw = (process.env.TWITCH_USERNAME || process.env.TWITCH_CHANNEL || '').trim();
+            const seededTokenRaw = (process.env.TWITCH_OAUTH_TOKEN || '').trim();
+            const seededLogin = seededLoginRaw.toLowerCase();
+
+            if (seededLogin && seededTokenRaw) {
+                console.warn(`[twitch] Seeding channel token from env for #${seededLogin} into data store.`);
+                const seeded = {
+                    channelId: seededLogin,
+                    login: seededLogin,
+                    displayName: seededLoginRaw,
+                    botAccessToken: seededTokenRaw,
+                    updatedAt: Date.now(),
+                };
+                await upsertChannel(seeded);
+                await chatBridge.addChannel(seeded);
+                return;
+            }
+
+            // Otherwise, fall back to anonymous chat join using TWITCH_CHANNEL.
             if (effectiveChannel && effectiveChannel !== 'default') {
                 console.warn(`[twitch] Falling back to anonymous chat connection for #${effectiveChannel} (read-only). Set TWITCH_CHANNEL and redeploy if needed.`);
-                chatBridge.addChannel({ channelId: effectiveChannel, login: effectiveChannel, updatedAt: Date.now() });
+                await chatBridge.addChannel({ channelId: effectiveChannel, login: effectiveChannel, updatedAt: Date.now() });
+                return;
             }
         }
+
         records.forEach((rec) => chatBridge.addChannel(rec));
     })
     .catch((err) => console.warn('[twitch] Failed to load channels for chat bridge', err));
