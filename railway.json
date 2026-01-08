@@ -1,5 +1,7 @@
 {
-  "build": "npm install && npm run overlay:build && npm run panel:build && npm run build",
+  "build": {
+    "command": "npm install && npm run overlay:build && npm run panel:build && npm run build"
+  },
   "start": "npm run start:prod",
   "env": {
     "PORT": "8080"
