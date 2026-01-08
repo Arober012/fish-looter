@@ -18,23 +18,19 @@ function apiUrl(path: string) {
   return `${apiBase}${safePath}`;
 }
 
-async function fetchState(token?: string, devMode?: boolean) {
+async function fetchState(devMode?: boolean) {
   const res = await fetch(apiUrl('/api/state'), {
-    headers: devMode ? undefined : { Authorization: `Bearer ${token}` },
+    credentials: 'include',
   });
   if (!res.ok) throw new Error('Failed to load state');
   return res.json() as Promise<{ state: PlayerStatePublic; store: StoreItem[]; upgrades: UpgradeDefinition[]; tradeBoard: TradeListing[]; storeExpiresAt: number; storeRefreshRemainingMs: number; catalogVersion?: string }>;
 }
 
-async function panelPost(token: string | null, path: string, body: Record<string, any> = {}, devMode?: boolean) {
+async function panelPost(path: string, body: Record<string, any> = {}) {
   const res = await fetch(apiUrl(path), {
     method: 'POST',
-    headers: devMode
-      ? { 'Content-Type': 'application/json' }
-      : {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
     body: JSON.stringify(body),
   });
   if (!res.ok) {
@@ -85,7 +81,7 @@ function applyTheme(theme?: ThemePalette) {
 }
 
 function App() {
-  const [token, setToken] = useState<string | null>(null);
+  const [session, setSession] = useState<{ login: string; displayName?: string } | null>(null);
   const [state, setState] = useState<PlayerStatePublic | null>(null);
   const [store, setStore] = useState<StoreItem[]>([]);
   const [upgrades, setUpgrades] = useState<UpgradeDefinition[]>([]);
@@ -108,9 +104,7 @@ function App() {
   const socketRef = useRef<ReturnType<typeof io> | null>(null);
 
   const panelDevFlag = (typeof process !== 'undefined' && (process as any).env?.VITE_PANEL_DEV) || (window as any).__PANEL_DEV__;
-  const devMode =
-    typeof window !== 'undefined' &&
-    (window.location.search.includes('dev=1') || panelDevFlag === 'true' || panelDevFlag === true);
+  const devMode = typeof window !== 'undefined' && (window.location.search.includes('dev=1') || panelDevFlag === 'true' || panelDevFlag === true);
 
   const xpPct = useMemo(() => {
     if (!state) return 0;
@@ -183,7 +177,7 @@ function App() {
   useEffect(() => {
     // Twitch panel CSP blocks wss; force polling in production panel to keep live updates
     const transports = devMode ? ['websocket', 'polling'] : ['polling'];
-    const socket = io(socketUrl, { transports, upgrade: devMode });
+    const socket = io(socketUrl, { transports, upgrade: devMode, withCredentials: true });
     socketRef.current = socket;
 
     socket.on('connect', () => {
@@ -234,61 +228,43 @@ function App() {
   };
 
   useEffect(() => {
-    // Dev fallback: no Twitch extension; call API directly without bearer
-    if (devMode || !window.Twitch || !window.Twitch.ext) {
-      (async () => {
-        setStatus('Dev mode — loading catalog...');
-        try {
-          setLoading(true);
-          await ensureCatalog();
-          setStatus('Dev mode — loading state...');
-          const payload = await fetchState(undefined, true);
-          applyStatePayload(payload);
-          const friendly = payload.state.displayName || payload.state.username;
-          setStatus(`Welcome, ${friendly} (dev)`);
-        } catch (err: any) {
-          setStatus(err?.message || 'Failed to load state (dev)');
-        } finally {
-          setLoading(false);
-        }
-      })();
-      return;
-    }
-
-    window.Twitch.ext.onAuthorized(async (auth: any) => {
-      setToken(auth.token);
-      setStatus('Authorized, loading catalog...');
+    (async () => {
       try {
         setLoading(true);
-        await ensureCatalog();
-        setStatus('Authorized, loading state...');
-        const payload = await fetchState(auth.token);
-        applyStatePayload(payload);
-        const friendly = payload.state.displayName || payload.state.username;
-        setStatus(`Welcome, ${friendly}`);
+        const meRes = await fetch(apiUrl('/api/auth/me'), { credentials: 'include' });
+        if (meRes.ok) {
+          const me = await meRes.json();
+          setSession(me.session);
+          setStatus('Authenticated, loading catalog...');
+          await ensureCatalog();
+          setStatus('Authenticated, loading state...');
+          const payload = await fetchState(devMode);
+          applyStatePayload(payload);
+          const friendly = payload.state.displayName || payload.state.username;
+          setStatus(`Welcome, ${friendly}`);
+        } else {
+          setStatus('Login required');
+        }
       } catch (err: any) {
         setStatus(err?.message || 'Failed to load state');
       } finally {
         setLoading(false);
       }
-    });
-
-    // Optional: subscribe to PubSub / broadcast here later
+    })();
   }, [devMode]);
 
   const refresh = async (msg?: string) => {
-    if (!token && !devMode) return;
     if (!catalog) await ensureCatalog();
-    const payload = await fetchState(token || undefined, devMode);
+    const payload = await fetchState(devMode);
     applyStatePayload(payload);
     if (msg) setStatus(msg);
   };
 
   const doPanel = async (path: string, body: Record<string, any> = {}, msg?: string) => {
-    if (!token && !devMode) return;
+    if (!session && !devMode) return;
     setLoading(true);
     try {
-      await panelPost(token, path, body, devMode);
+      await panelPost(path, body);
       await refresh(msg);
     } catch (err: any) {
       setStatus(err?.message || 'Action failed');
@@ -298,10 +274,10 @@ function App() {
   };
 
   const doCastReel = async (command: 'cast' | 'reel') => {
-    if (!token && !devMode) return;
+    if (!session && !devMode) return;
     setLoading(true);
     try {
-      await panelPost(token, '/api/command', { command }, devMode);
+      await panelPost('/api/command', { command });
       await refresh(`Sent !${command}`);
     } catch (err: any) {
       setStatus(err?.message || 'Command failed');
@@ -361,8 +337,15 @@ function App() {
     ? `@${state.twitchLogin}`
     : '';
 
-  if (!token && !devMode) {
-    return <div className="panel-shell"><div className="muted">{status}</div></div>;
+  if (!session && !devMode) {
+    return (
+      <div className="panel-shell">
+        <div className="muted">{status}</div>
+        <button className="primary" onClick={() => (window.location.href = apiUrl('/api/auth/login'))} disabled={loading}>
+          Login with Twitch
+        </button>
+      </div>
+    );
   }
 
   return (
