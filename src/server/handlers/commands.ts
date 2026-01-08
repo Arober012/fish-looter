@@ -1440,7 +1440,7 @@ function refreshInteractionLock(io: Server, state: PlayerState) {
 async function handleFish(io: Server, state: PlayerState) {
     emit(io, {
         type: 'status',
-        text: 'Commands: !fish (help), !cast, !reel, !store, !buy <item>, !upgrades, !sell [item], !inventory, !equip <rod>, !save, !level, !theme <name>',
+        text: 'Commands: !fish (help), !cast, !reel, !save, !level, !theme <name>, !enchant <essence>, !duplicate <item|mat>',
     });
     pushLog(io, `${state.username} checked the fishing guide.`);
 }
