@@ -1154,9 +1154,9 @@ function pushLog(io: Server, line: string) {
     emit(io, { type: 'log', line });
 }
 
-function emitStoreLocked(io: Server, reason: string, remainingMs?: number, refreshesLeft?: number) {
+function emitStoreLocked(io: Server, reason: string, remainingMs?: number, refreshesLeft?: number, user?: string) {
     const cfg = getStoreConfig(getCatalogSnapshot());
-    emit(io, { type: 'store', items: [], upgrades: [], expiresAt: Date.now() + cfg.rotationMs, locked: { reason, remainingMs, refreshesLeft } });
+    emit(io, { type: 'store', items: [], upgrades: [], expiresAt: Date.now() + cfg.rotationMs, locked: { reason, remainingMs, refreshesLeft }, user });
 }
 
 function emitInventoryLocked(io: Server, state: PlayerState, reason: string) {
@@ -1685,7 +1685,7 @@ async function handleStore(io: Server, state?: PlayerState) {
         return isStoreItemUnlocked(state, i);
     });
     const priced = priceStoreItemsForState(filtered, state);
-    emit(io, { type: 'store', items: priced, upgrades: getUpgrades(state), expiresAt: rotation.expiresAt });
+    emit(io, { type: 'store', items: priced, upgrades: getUpgrades(state), expiresAt: rotation.expiresAt, user: state?.username });
 }
 
 async function handleStoreRefresh(io: Server, state: PlayerState) {
@@ -1712,7 +1712,7 @@ async function handleStoreRefresh(io: Server, state: PlayerState) {
     });
 
     const priced = priceStoreItemsForState(filtered, state);
-    emit(io, { type: 'store', items: priced, upgrades: getUpgrades(state), expiresAt });
+    emit(io, { type: 'store', items: priced, upgrades: getUpgrades(state), expiresAt, user: state.username });
     const hoursLabel = cfg.rotationHours >= 1 ? `${cfg.rotationHours}h` : `${Math.round((cfg.rotationHours * 60))}m`;
     emit(io, { type: 'status', text: `${state.username} refreshed the store. Next auto refresh in ${hoursLabel}; personal cooldown 8h.` });
     pushLog(io, `${state.username} manually refreshed the store (next auto in ${hoursLabel}, personal cooldown 8h).`);
@@ -1734,7 +1734,7 @@ async function handleUpgrades(io: Server, state?: PlayerState) {
         return isStoreItemUnlocked(state, i);
     });
     const priced = priceStoreItemsForState(filtered, state);
-    emit(io, { type: 'store', items: priced, upgrades: getUpgrades(state), expiresAt: rotation.expiresAt });
+    emit(io, { type: 'store', items: priced, upgrades: getUpgrades(state), expiresAt: rotation.expiresAt, user: state?.username });
 }
 
 async function handleInventory(io: Server, state: PlayerState) {
@@ -2714,7 +2714,7 @@ export async function processChatCommand(io: Server, payload: ChatCommandEvent &
         const reason = `${interactionLock.username} is using the ${interactionLock.mode}; please wait until they're done.`;
         emit(io, { type: 'status', text: `${reason}${cdText}` });
         if (command === 'store' || command === 'upgrades') {
-            emitStoreLocked(io, reason, remainingMs > 0 ? remainingMs : undefined, maxInteractionRefreshes);
+            emitStoreLocked(io, reason, remainingMs > 0 ? remainingMs : undefined, maxInteractionRefreshes, username);
         }
         if (command === 'inventory') {
             emitInventoryLocked(io, await loadPlayer(username, chan), reason);
@@ -2729,7 +2729,7 @@ export async function processChatCommand(io: Server, payload: ChatCommandEvent &
         const reason = `${username}, cooldown active: ${formatDuration(remainingMs)} remaining.`;
         emit(io, { type: 'status', text: reason });
         if (command === 'store' || command === 'upgrades') {
-            emitStoreLocked(io, reason, remainingMs, maxInteractionRefreshes - (interactionLock?.refreshesUsed ?? 0));
+            emitStoreLocked(io, reason, remainingMs, maxInteractionRefreshes - (interactionLock?.refreshesUsed ?? 0), username);
         }
         if (command === 'inventory') {
             emitInventoryLocked(io, await loadPlayer(username, chan), reason);

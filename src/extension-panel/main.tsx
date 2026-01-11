@@ -176,6 +176,7 @@ function App() {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [catalogVersion, setCatalogVersion] = useState<string | null>(null);
   const socketRef = useRef<ReturnType<typeof io> | null>(null);
+  const myUserRef = useRef<string | null>(null);
   const [activeTab, setActiveTab] = useState<'play' | 'inventory' | 'store' | 'upgrades' | 'trade' | 'craft'>('play');
   const [accentColor, setAccentColor] = useState<string>('#7ad7ff');
   const [showLoginPreview, setShowLoginPreview] = useState<boolean>(false);
@@ -192,6 +193,7 @@ function App() {
   ];
 
   const handleAuthLost = (message?: string) => {
+    myUserRef.current = null;
     setSession(null);
     setState(null);
     setStore([]);
@@ -305,7 +307,24 @@ function App() {
     }
   }, [enchantEssence, essenceOptions]);
 
+  const normalizeUser = (user?: string | null) => (user ? user.trim().toLowerCase() : null);
+
+  const setMyUser = (user?: string | null) => {
+    const normalized = normalizeUser(user);
+    if (normalized) {
+      myUserRef.current = normalized;
+    }
+  };
+
+  const isMyEvent = (user?: string | null) => {
+    const me = myUserRef.current;
+    if (!me) return false;
+    const normalized = normalizeUser(user);
+    return Boolean(normalized && normalized === me);
+  };
+
   const applyStatePayload = ({ state: st, store, upgrades, tradeBoard, storeExpiresAt, storeRefreshRemainingMs, catalogVersion }: { state: PlayerStatePublic; store: StoreItem[]; upgrades: UpgradeDefinition[]; tradeBoard: TradeListing[]; storeExpiresAt: number; storeRefreshRemainingMs: number; catalogVersion?: string }) => {
+    setMyUser(st.username);
     setState(st);
     setStore(store || []);
     setUpgrades(upgrades || []);
@@ -344,12 +363,14 @@ function App() {
     socket.on('overlay-event', (evt: OverlayEvent) => {
       switch (evt.type) {
         case 'inventory':
-          if (evt.state) {
+          if (evt.state && isMyEvent(evt.state.username)) {
+            setMyUser(evt.state.username);
             setState(evt.state);
             setStatus('Inventory updated');
           }
           break;
         case 'store':
+          if (!isMyEvent(evt.user)) break;
           setStore(evt.items || []);
           setUpgrades(evt.upgrades || []);
           setStoreExpiresAt(evt.expiresAt ?? null);
@@ -366,6 +387,7 @@ function App() {
           setStatus(evt.text);
           break;
         case 'skin':
+          if (!isMyEvent(evt.user)) break;
           setState((prev) => (prev ? { ...prev, poleSkinId: evt.skinId } : prev));
           break;
         default:
@@ -391,6 +413,7 @@ function App() {
         const meRes = await fetch(apiUrl('/api/auth/me'), { credentials: 'include' });
         if (meRes.ok) {
           const me = await meRes.json();
+          setMyUser(me.session?.displayName || me.session?.login);
           setSession(me.session);
           setStatus('Authenticated, loading catalog...');
           await ensureCatalog();

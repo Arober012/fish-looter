@@ -208,7 +208,7 @@ export type OverlayEvent =
     | { type: 'tug'; user: string }
     | { type: 'catch'; user: string; success: boolean; item?: InventoryItem; goldEarned?: number; xpGained?: number; rarity?: Rarity }
     | { type: 'level'; level: number; xp: number; xpNeeded: number }
-    | { type: 'store'; items: StoreItem[]; upgrades: UpgradeDefinition[]; expiresAt?: number; locked?: { reason: string; remainingMs?: number; refreshesLeft?: number } }
+    | { type: 'store'; items: StoreItem[]; upgrades: UpgradeDefinition[]; expiresAt?: number; locked?: { reason: string; remainingMs?: number; refreshesLeft?: number }; user?: string }
     | { type: 'inventory'; state: PlayerStatePublic; locked?: { reason: string; remainingMs?: number; refreshesLeft?: number } }
     | { type: 'sell'; gold: number; item?: InventoryItem; count?: number }
     | { type: 'save'; ok: boolean; message?: string }
