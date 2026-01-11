@@ -263,6 +263,7 @@ const commandCatalog: CatalogChatCommand[] = [
     { name: 'theme', description: 'Change theme.' },
     { name: 'event', description: 'Start/stop global events (mod-only)', modOnly: true },
     { name: 'cooldown', description: 'Adjust per-user cooldown (mod-only)', modOnly: true },
+    { name: 'gcooldown', description: 'Adjust global chat cooldown (mod-only)', modOnly: true },
     { name: 'reset-profile', description: 'Reset a player profile to defaults (mod-only, use sparingly)', modOnly: true },
     { name: 'panel', description: 'Get the panel link.' },
 ];
@@ -880,8 +881,11 @@ const xpBuffTimers = new Map<string, TimedBuff[]>();
 const valueBuffTimers = new Map<string, TimedBuff[]>();
 let themeSent = false;
 const lastCommandAt = new Map<string, number>();
+const lastGlobalCommandAt = new Map<string, number>();
 const DEFAULT_USER_COOLDOWN_MS = 35 * 1000;
+const DEFAULT_GLOBAL_COOLDOWN_MS = 0; // disabled by default
 let userCommandCooldownMs = DEFAULT_USER_COOLDOWN_MS;
+let globalCommandCooldownMs = DEFAULT_GLOBAL_COOLDOWN_MS;
 const interactionTimeoutMs = 25 * 1000;
 const maxInteractionRefreshes = 2; // number of extensions beyond the initial 25s (total 75s)
 const maxEventDurationMs = 10 * 60 * 1000;
@@ -1512,6 +1516,9 @@ async function handleCast(io: Server, state: PlayerState) {
     clearTug(state.scopedKey);
     clearDecay(state.scopedKey);
 
+    // Refresh overlay rod art for the casting player so skins stay accurate after overlay reloads
+    emit(io, { type: 'skin', user: state.username, skinId: state.poleSkinId });
+
     const scheduleDecay = (delayMs: number) => {
         clearDecay(state.scopedKey);
         const decay = setTimeout(() => {
@@ -2059,6 +2066,7 @@ async function handleEquip(io: Server, state: PlayerState, args: string[]) {
         return;
     }
     state.poleSkinId = match.id;
+    await savePlayer(state); // persist equipped skin for future sessions/overlay reloads
     emit(io, { type: 'skin', user: state.username, skinId: match.id });
     emit(io, { type: 'inventory', state: ensurePublic(state) });
     pushLog(io, `${state.username} equipped ${match.name}.`);
@@ -2679,6 +2687,40 @@ async function handleCooldownCommand(io: Server, state: PlayerState, args: strin
     emit(io, { type: 'status', text: `${state.username} set the per-user cooldown to ${clampedSeconds}s.` });
 }
 
+async function handleGlobalCooldownCommand(io: Server, state: PlayerState, args: string[], isMod: boolean | undefined, isBroadcaster: boolean | undefined) {
+    const isPrivileged = Boolean(isMod || isBroadcaster);
+    if (!isPrivileged) {
+        emit(io, { type: 'status', text: `${state.username}: global cooldown control is mod-only.` });
+        return;
+    }
+
+    if (args.length === 0) {
+        const seconds = Math.round(globalCommandCooldownMs / 1000);
+        const label = seconds > 0 ? `${seconds}s` : 'disabled';
+        emit(io, { type: 'status', text: `Global chat cooldown is ${label} (set 5-45s with !gcooldown).` });
+        return;
+    }
+
+    const raw = args.join(' ').toLowerCase();
+    if (raw === 'reset' || raw === 'default') {
+        globalCommandCooldownMs = DEFAULT_GLOBAL_COOLDOWN_MS;
+        lastGlobalCommandAt.clear();
+        emit(io, { type: 'status', text: `${state.username} reset the global chat cooldown (disabled).` });
+        return;
+    }
+
+    const parsed = Number(raw.replace(/[^0-9.]/g, ''));
+    if (!Number.isFinite(parsed)) {
+        emit(io, { type: 'status', text: 'Usage: !gcooldown <seconds 5-45> | !gcooldown reset' });
+        return;
+    }
+
+    const clampedSeconds = Math.max(5, Math.min(45, Math.round(parsed)));
+    globalCommandCooldownMs = clampedSeconds * 1000;
+    lastGlobalCommandAt.clear();
+    emit(io, { type: 'status', text: `${state.username} set the global chat cooldown to ${clampedSeconds}s.` });
+}
+
 export async function processChatCommand(io: Server, payload: ChatCommandEvent & { fromPanel?: boolean }, sendChat?: (message: string) => Promise<void>) {
     const { username, args = [], isMod, isBroadcaster, channel, fromPanel } = payload;
     const rawCommand = (payload.command ?? '').toLowerCase();
@@ -2691,7 +2733,7 @@ export async function processChatCommand(io: Server, payload: ChatCommandEvent &
         return;
     }
     const disableGlobalCooldown = process.env.DISABLE_COOLDOWN === 'true' || process.env.NODE_ENV === 'development';
-    const isPrivilegedCommand = command === 'event' || command === 'cooldown' || command === 'reset-profile';
+    const isPrivilegedCommand = command === 'event' || command === 'cooldown' || command === 'gcooldown' || command === 'reset-profile';
     const bypassCooldown = Boolean(disableGlobalCooldown || isPrivilegedCommand);
     const chan = (channel ?? process.env.TWITCH_CHANNEL ?? 'default').toLowerCase();
     if (!themeSent) {
@@ -2705,6 +2747,16 @@ export async function processChatCommand(io: Server, payload: ChatCommandEvent &
     const isReel = command === 'reel';
     const isFishingCommand = isCast || isReel;
     const isSessionCommand = command === 'store' || command === 'upgrades' || command === 'inventory' || command === 'buy' || command === 'sell' || command === 'use';
+    const isChatOrigin = !fromPanel;
+
+    const lastGlobal = lastGlobalCommandAt.get(chan) ?? 0;
+    const globalRemainingMs = disableGlobalCooldown ? 0 : globalCommandCooldownMs - (now - lastGlobal);
+    if (isChatOrigin && globalCommandCooldownMs > 0 && !isMod && !isBroadcaster && globalRemainingMs > 0) {
+        const reason = `Global cooldown active: ${formatDuration(globalRemainingMs)} remaining.`;
+        emit(io, { type: 'status', text: `${username}: ${reason}` });
+        pushLog(io, `${username} blocked by global cooldown (${formatDuration(globalRemainingMs)} remaining).`);
+        return;
+    }
 
     const last = lastCommandAt.get(scopedKey) ?? 0;
     const remainingMs = bypassCooldown ? 0 : userCommandCooldownMs - (now - last);
@@ -2740,6 +2792,10 @@ export async function processChatCommand(io: Server, payload: ChatCommandEvent &
 
     if (enforceCooldown && !isFishingCommand) {
         lastCommandAt.set(scopedKey, now);
+    }
+
+    if (isChatOrigin && globalCommandCooldownMs > 0 && !disableGlobalCooldown) {
+        lastGlobalCommandAt.set(chan, now);
     }
 
     const state = await loadPlayer(username, chan);
@@ -2812,6 +2868,9 @@ export async function processChatCommand(io: Server, payload: ChatCommandEvent &
             break;
         case 'cooldown':
             await handleCooldownCommand(io, state, args, isMod, isBroadcaster);
+            break;
+        case 'gcooldown':
+            await handleGlobalCooldownCommand(io, state, args, isMod, isBroadcaster);
             break;
         case 'reset-profile':
             await handleResetProfile(io, state, args, isMod, isBroadcaster);
