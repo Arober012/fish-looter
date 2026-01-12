@@ -1516,8 +1516,9 @@ async function handleCast(io: Server, state: PlayerState) {
     clearTug(state.scopedKey);
     clearDecay(state.scopedKey);
 
-    // Refresh overlay rod art for the casting player so skins stay accurate after overlay reloads
+    // Refresh overlay rod art and biome/state so skins/tiers stay accurate even before a catch
     emit(io, { type: 'skin', user: state.username, skinId: state.poleSkinId });
+    emit(io, { type: 'inventory', state: ensurePublic(state) });
 
     const scheduleDecay = (delayMs: number) => {
         clearDecay(state.scopedKey);
@@ -2678,11 +2679,11 @@ async function handleCooldownCommand(io: Server, state: PlayerState, args: strin
 
     const parsed = Number(raw.replace(/[^0-9.]/g, ''));
     if (!Number.isFinite(parsed)) {
-        emit(io, { type: 'status', text: 'Usage: !cooldown <seconds 5-300> | !cooldown reset' });
+        emit(io, { type: 'status', text: 'Usage: !cooldown <seconds 5-60> | !cooldown reset' });
         return;
     }
 
-    const clampedSeconds = Math.max(5, Math.min(300, Math.round(parsed)));
+    const clampedSeconds = Math.max(5, Math.min(60, Math.round(parsed)));
     userCommandCooldownMs = clampedSeconds * 1000;
     emit(io, { type: 'status', text: `${state.username} set the per-user cooldown to ${clampedSeconds}s.` });
 }
@@ -2697,7 +2698,7 @@ async function handleGlobalCooldownCommand(io: Server, state: PlayerState, args:
     if (args.length === 0) {
         const seconds = Math.round(globalCommandCooldownMs / 1000);
         const label = seconds > 0 ? `${seconds}s` : 'disabled';
-        emit(io, { type: 'status', text: `Global chat cooldown is ${label} (set 5-45s with !gcooldown).` });
+        emit(io, { type: 'status', text: `Global chat cooldown is ${label} (set 5-60s with !gcooldown).` });
         return;
     }
 
@@ -2711,11 +2712,11 @@ async function handleGlobalCooldownCommand(io: Server, state: PlayerState, args:
 
     const parsed = Number(raw.replace(/[^0-9.]/g, ''));
     if (!Number.isFinite(parsed)) {
-        emit(io, { type: 'status', text: 'Usage: !gcooldown <seconds 5-45> | !gcooldown reset' });
+        emit(io, { type: 'status', text: 'Usage: !gcooldown <seconds 5-60> | !gcooldown reset' });
         return;
     }
 
-    const clampedSeconds = Math.max(5, Math.min(45, Math.round(parsed)));
+    const clampedSeconds = Math.max(5, Math.min(60, Math.round(parsed)));
     globalCommandCooldownMs = clampedSeconds * 1000;
     lastGlobalCommandAt.clear();
     emit(io, { type: 'status', text: `${state.username} set the global chat cooldown to ${clampedSeconds}s.` });

@@ -28,10 +28,10 @@ Mod/Broadcaster commands
             !event start double x3 5       -> Double Catch +3 rolls for 5 minutes.
 - !event stop [id]               : Stop one event by id, or all if no id.
 - !cooldown                      : Show current per-user cooldown (cast/reel/chat commands share it).
-- !cooldown <seconds 5-300>      : Set per-user cooldown live (affects panel + chat).
+- !cooldown <seconds 5-60>       : Set per-user cooldown live (affects panel + chat).
 - !cooldown reset                : Reset cooldown to default (35s).
 - !gcooldown                     : Show current global chat cooldown (off by default).
-- !gcooldown <seconds 5-45>      : Set global chat cooldown (mods/broadcaster only).
+- !gcooldown <seconds 5-60>      : Set global chat cooldown (mods/broadcaster only).
 - !gcooldown reset               : Disable the global chat cooldown.
 - !reset-profile [username]      : Reset a player profile to defaults (mod-only; use only when necessary/testing).
 - !theme <name>                  : Switch overlay theme (names listed below).
