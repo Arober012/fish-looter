@@ -2281,6 +2281,7 @@ async function handleUse(io: Server, state: PlayerState, args: string[]) {
         state.hasTug = false;
         clearTug(state.scopedKey);
         clearDecay(state.scopedKey);
+        await savePlayer(state); // persist biome progression
         emit(io, { type: 'status', text: `${state.username} used ${item.name} and sailed to ${next.name}. New waters unlocked.` });
         emit(io, { type: 'inventory', state: ensurePublic(state) });
         pushLog(io, `${state.username} charted a course to ${next.name} using an Enchanted Compass.`);
@@ -2458,6 +2459,7 @@ async function handleUse(io: Server, state: PlayerState, args: string[]) {
                 state.hasTug = false;
                 clearTug(state.scopedKey);
                 clearDecay(state.scopedKey);
+                await savePlayer(state); // persist biome change when sailing back
                 emit(io, { type: 'status', text: `${state.username} sailed to ${prev.name} using a Waypoint Charter.` });
                 pushLog(io, `${state.username} sailed down to ${prev.name} (Waypoint Charter).`);
             }
