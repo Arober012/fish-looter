@@ -872,7 +872,7 @@ const decayTimers = new Map<string, NodeJS.Timeout>();
 const baitTimers = new Map<string, NodeJS.Timeout>();
 const charmTimers = new Map<string, NodeJS.Timeout>();
 // Overlay lock prevents multiple users from hijacking the same visual cycle; keyed by channel
-const overlayLocks = new Map<string, { scopedKey: string; user: string; sessionId: string; expiresAt: number }>();
+const overlayLocks = new Map<string, { scopedKey: string; user: string; sessionId: string; expiresAt: number; phase: 'casting' | 'tugging' | 'reeling' }>();
 const tugMinDelayMs = 2000;
 const tugMaxDelayMs = 6000;
 const tugResponseWindowMs = 10000; // time to react after tug fires (covers stream delay)
@@ -1511,14 +1511,18 @@ async function handleFish(io: Server, state: PlayerState) {
     pushLog(io, `${state.username} checked the fishing guide.`);
 }
 
-async function handleCast(io: Server, state: PlayerState, channel: string) {
+async function handleCast(io: Server, state: PlayerState, channel: string, sendChat?: (message: string) => Promise<void>) {
     const channelKey = (channel ?? 'default').toLowerCase();
     const now = Date.now();
     const existingLock = overlayLocks.get(channelKey);
     if (existingLock && existingLock.expiresAt > now && existingLock.scopedKey !== state.scopedKey) {
         const remainingMs = Math.max(0, existingLock.expiresAt - now);
-        emit(io, { type: 'status', text: `Overlay busy: ${existingLock.user} is reeling. ${formatDuration(remainingMs)} left.` });
-        pushLog(io, `${state.username} blocked: overlay locked by ${existingLock.user} (${formatDuration(remainingMs)} remaining).`);
+        const phaseLabel = existingLock.phase === 'casting' ? 'casting (waiting for tug)' : existingLock.phase === 'tugging' ? 'tugging (waiting for reel)' : 'reeling';
+        emit(io, { type: 'status', text: `Overlay busy: ${existingLock.user} is ${phaseLabel}. ${formatDuration(remainingMs)} left.` });
+        pushLog(io, `${state.username} blocked: overlay locked by ${existingLock.user} (${phaseLabel}, ${formatDuration(remainingMs)} remaining).`);
+        if (sendChat) {
+            sendChat(`@${state.username} overlay busy — ${existingLock.user} is ${phaseLabel}. Try again in ~${Math.ceil(remainingMs / 1000)}s.`).catch(() => undefined);
+        }
         return;
     }
 
@@ -1529,7 +1533,7 @@ async function handleCast(io: Server, state: PlayerState, channel: string) {
 
     const sessionId = existingLock && existingLock.scopedKey === state.scopedKey && existingLock.expiresAt > now ? existingLock.sessionId : randomUUID();
     const sessionExpiresAt = now + tugMaxDelayMs + tugResponseWindowMs + tugFailSafeBufferMs + 3000;
-    overlayLocks.set(channelKey, { scopedKey: state.scopedKey, user: state.username, sessionId, expiresAt: sessionExpiresAt });
+    overlayLocks.set(channelKey, { scopedKey: state.scopedKey, user: state.username, sessionId, expiresAt: sessionExpiresAt, phase: 'casting' });
 
     if (state.activeBait?.expiresAt && state.activeBait.expiresAt < Date.now()) {
         state.activeBait = undefined;
@@ -1570,20 +1574,31 @@ async function handleCast(io: Server, state: PlayerState, channel: string) {
     const timer = setTimeout(() => {
         state.hasTug = true;
         // Extend the lock window through the reel response time
-        overlayLocks.set(channelKey, { scopedKey: state.scopedKey, user: state.username, sessionId, expiresAt: Date.now() + tugResponseWindowMs + tugFailSafeBufferMs });
+        overlayLocks.set(channelKey, { scopedKey: state.scopedKey, user: state.username, sessionId, expiresAt: Date.now() + tugResponseWindowMs + tugFailSafeBufferMs, phase: 'tugging' });
         emit(io, { type: 'tug', user: state.username, sessionId });
+        if (sendChat) {
+            sendChat(`@${state.username} tug! Type !reel to pull it in.`).catch(() => undefined);
+        }
         // Give players a generous window after seeing the tug to handle stream delay
         scheduleDecay(tugResponseWindowMs);
     }, eta);
     tugTimers.set(state.scopedKey, timer);
 
     emit(io, { type: 'cast', user: state.username, etaMs: eta, sessionId });
+    if (sendChat) {
+        const windowSec = Math.ceil((eta + tugResponseWindowMs) / 1000);
+        sendChat(`@${state.username} cast their line — wait for the tug (up to ~${windowSec}s). Overlay reserved until they reel.`).catch(() => undefined);
+    }
     pushLog(io, `${state.username} casts their line.`);
 }
 
-async function handleReel(io: Server, state: PlayerState, channel: string) {
+async function handleReel(io: Server, state: PlayerState, channel: string, _sendChat?: (message: string) => Promise<void>) {
     const channelKey = (channel ?? 'default').toLowerCase();
     const sessionId = overlayLocks.get(channelKey)?.sessionId;
+    const locked = overlayLocks.get(channelKey);
+    if (locked && locked.scopedKey === state.scopedKey) {
+        overlayLocks.set(channelKey, { ...locked, phase: 'reeling' });
+    }
 
     if (!state.isCasting) {
         emit(io, { type: 'status', text: `${state.username} needs to !cast first.` });
@@ -2847,10 +2862,10 @@ export async function processChatCommand(io: Server, payload: ChatCommandEvent &
             await handleFish(io, state);
             break;
         case 'cast':
-            await handleCast(io, state, chan);
+            await handleCast(io, state, chan, sendChat);
             break;
         case 'reel':
-            await handleReel(io, state, chan);
+            await handleReel(io, state, chan, sendChat);
             lastCommandAt.set(scopedKey, Date.now());
             break;
         case 'store':
