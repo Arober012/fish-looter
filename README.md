@@ -71,6 +71,11 @@ After that, the server will store:
 
 If the server logs "No saved channels found", visit `/api/auth/login` once to re-authorize and persist tokens.
 
+### Recommended env vars (chat stability)
+- `TWITCH_CLIENT_ID` / `TWITCH_CLIENT_SECRET`: enable token refresh when Twitch drops idle connections.
+- `TWITCH_OAUTH_TOKEN` (and `TWITCH_USERNAME`): seed the bot token on startup so reconnects work without re-auth.
+- `TWITCH_CHAT_HEALTH_MS` (default `60000`): how often (ms) to verify chat clients are connected and rejoin if not.
+
 If you cannot use Volumes (e.g., plan limitations), you can still run chat commands without storing OAuth tokens:
 - Set `TWITCH_CHANNEL=<your_channel_login>`
 - The server will connect to Twitch chat **anonymously (read-only)** and still receive `!commands`.

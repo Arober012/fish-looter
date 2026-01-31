@@ -249,6 +249,7 @@ export default function App() {
   const [boostIconSet, setBoostIconSet] = useState<{ xp: string; gold: string; double: string; luck: string }>({ xp: '⭐', gold: '💰', double: '🎣', luck: '🍀' });
   const [biomeKey, setBiomeKey] = useState<string>('cove');
   const [biomeImage, setBiomeImage] = useState<string | undefined>(biomeImages['cove']);
+  const [sessionId, setSessionId] = useState<string | null>(null);
 
   const resolvedTip = (skinId: PoleSkinId): TipAnchor => tipAnchors[skinId] ?? tipAnchors.classic;
 
@@ -301,6 +302,8 @@ export default function App() {
     socket.on('connect', () => setStatus('Connected. Waiting for !cast / !reel...'));
 
     socket.on('overlay-event', (evt: OverlayEvent) => {
+      const sessionMismatch = sessionId && 'sessionId' in evt && evt.sessionId && evt.sessionId !== sessionId;
+
       switch (evt.type) {
         case 'status':
           setStatus(evt.text);
@@ -309,18 +312,21 @@ export default function App() {
         case 'cast': {
           setStatus(`${evt.user} cast their line`);
           setActiveUser(evt.user);
+          setSessionId(evt.sessionId ?? null);
           setLineState('casting');
           const delay = Math.max(320, Math.min(1100, evt.etaMs ?? 700));
           setTimeout(() => setLineState('casted'), delay);
           break;
         }
         case 'tug':
+          if (sessionMismatch || (sessionId && evt.sessionId === undefined)) return;
           setStatus(`${evt.user}'s line is tugging!`);
           setStatusDetail('Hit !reel in chat to pull it in.');
           setActiveUser(evt.user);
           setLineState('tug');
           break;
         case 'catch': {
+          if (sessionMismatch || (sessionId && evt.sessionId === undefined)) return;
           setLineState('reeling');
           setActiveUser(evt.user);
           setTimeout(() => {
@@ -332,12 +338,18 @@ export default function App() {
               if (evt.goldEarned !== undefined) bonus.push(`+${evt.goldEarned}g`);
               if (evt.xpGained !== undefined) bonus.push(`+${evt.xpGained}xp`);
               setStatusDetail(bonus.length ? bonus.join(' / ') : 'Added to inventory (see panel)');
-              setTimeout(() => setLineState('idle'), 900);
+              setTimeout(() => {
+                setLineState('idle');
+                setSessionId(null);
+              }, 900);
             } else {
               setLastCatch({ success: false });
               setStatus(`${evt.user} reeled in too soon.`);
               setStatusDetail('Missed the catch — wait for the tug.');
-              setTimeout(() => setLineState('idle'), 450);
+              setTimeout(() => {
+                setLineState('idle');
+                setSessionId(null);
+              }, 450);
             }
           }, 200);
           break;

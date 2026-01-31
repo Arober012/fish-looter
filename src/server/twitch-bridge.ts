@@ -13,10 +13,36 @@ export class ChatBridge {
     private io: Server;
     private onChatCommand: (io: Server, payload: ChatCommandEvent, sendChat?: (message: string) => Promise<void>) => void | Promise<void>;
     private clients: Map<string, ConnectedClient> = new Map(); // channel -> client
+    private channelRecords: Map<string, ChannelRecord> = new Map();
+    private reconnectTimers: Map<string, NodeJS.Timeout> = new Map();
 
     constructor(io: Server, onChatCommand: (io: Server, payload: ChatCommandEvent, sendChat?: (message: string) => Promise<void>) => void | Promise<void>) {
         this.io = io;
         this.onChatCommand = onChatCommand;
+    }
+
+    private clearReconnectTimer(chan: string) {
+        const timer = this.reconnectTimers.get(chan);
+        if (timer) clearTimeout(timer);
+        this.reconnectTimers.delete(chan);
+    }
+
+    private scheduleReconnect(record: ChannelRecord, reason: string, delayMs = 5000) {
+        const chan = record.login.toLowerCase();
+        if (this.reconnectTimers.has(chan)) return; // already scheduled
+        console.warn(`[twitch] Reconnecting to #${chan} in ${delayMs}ms (${reason})`);
+        const timer = setTimeout(async () => {
+            this.reconnectTimers.delete(chan);
+            this.clients.delete(chan);
+            try {
+                await this.addChannel(record);
+            } catch (err) {
+                console.warn(`[twitch] Reconnect failed for #${chan}: ${err instanceof Error ? err.message : String(err)}`);
+                // backoff and retry once more
+                this.scheduleReconnect(record, 'retry after failure', Math.min(delayMs * 2, 60000));
+            }
+        }, delayMs);
+        this.reconnectTimers.set(chan, timer);
     }
 
     getStatus() {
@@ -81,6 +107,7 @@ export class ChatBridge {
 
     async addChannel(record: ChannelRecord) {
         const chan = record.login.toLowerCase();
+        this.channelRecords.set(chan, record);
         if (this.clients.has(chan)) return; // already connected
 
         let effectiveRecord = record;
@@ -115,6 +142,7 @@ export class ChatBridge {
 
         const client = new Client({
             options: { debug: process.env.TMI_DEBUG === 'true' },
+            connection: { reconnect: true, secure: true },
             ...(oauth ? { identity: { username, password: oauth } } : {}),
             channels: [chan],
         });
@@ -125,6 +153,7 @@ export class ChatBridge {
 
         client.on('connected', (addr: string, port: number) => {
             console.log(`[twitch] Connected to #${chan} via ${addr}:${port}`);
+            this.clearReconnectTimer(chan);
         });
 
         client.on('reconnect', () => {
@@ -134,11 +163,17 @@ export class ChatBridge {
         client.on('notice', (_channel: string, msgid: string, message: string) => {
             // Auth failures and join issues often surface only as NOTICE events.
             console.warn(`[twitch] Notice for #${chan}: ${msgid} - ${message}`);
+            const authProblem = message.toLowerCase().includes('authentication failed') || message.toLowerCase().includes('login authentication failed');
+            if (authProblem) {
+                this.clients.delete(chan);
+                this.scheduleReconnect(effectiveRecord, 'auth notice');
+            }
         });
 
         client.on('disconnected', (reason: string) => {
             console.warn(`[twitch] Disconnected from #${chan}: ${reason}`);
             this.clients.delete(chan);
+            this.scheduleReconnect(effectiveRecord, reason || 'disconnected');
         });
 
         client.on('message', (_channel: string, tags: ChatUserstate, message: string, self: boolean) => {
@@ -174,6 +209,25 @@ export class ChatBridge {
             this.clients.set(chan, { channel: chan, client, authMode });
         } catch (err) {
             console.error(`[twitch] Connection failed for #${chan}`, err);
+            this.scheduleReconnect(effectiveRecord, 'initial connect failed', 7500);
+        }
+    }
+
+    async ensureConnected(record: ChannelRecord) {
+        const chan = record.login.toLowerCase();
+        const existing = this.clients.get(chan);
+        if (!existing) {
+            return this.addChannel(record);
+        }
+        const state = typeof (existing.client as any).readyState === 'function' ? (existing.client as any).readyState() : 'OPEN';
+        if (state !== 'OPEN') {
+            try {
+                await existing.client.disconnect();
+            } catch {
+                // ignore
+            }
+            this.clients.delete(chan);
+            return this.addChannel(record);
         }
     }
 

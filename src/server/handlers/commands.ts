@@ -871,6 +871,8 @@ const tugTimers = new Map<string, NodeJS.Timeout>();
 const decayTimers = new Map<string, NodeJS.Timeout>();
 const baitTimers = new Map<string, NodeJS.Timeout>();
 const charmTimers = new Map<string, NodeJS.Timeout>();
+// Overlay lock prevents multiple users from hijacking the same visual cycle; keyed by channel
+const overlayLocks = new Map<string, { scopedKey: string; user: string; sessionId: string; expiresAt: number }>();
 const tugMinDelayMs = 2000;
 const tugMaxDelayMs = 6000;
 const tugResponseWindowMs = 10000; // time to react after tug fires (covers stream delay)
@@ -1374,6 +1376,14 @@ function clearDecay(scopedKey: string) {
     }
 }
 
+function clearOverlayLock(channel: string, sessionId?: string) {
+    const key = channel.toLowerCase();
+    const lock = overlayLocks.get(key);
+    if (!lock) return;
+    if (sessionId && lock.sessionId !== sessionId) return;
+    overlayLocks.delete(key);
+}
+
 function clearBait(scopedKey: string) {
     const timer = baitTimers.get(scopedKey);
     if (timer) {
@@ -1501,11 +1511,25 @@ async function handleFish(io: Server, state: PlayerState) {
     pushLog(io, `${state.username} checked the fishing guide.`);
 }
 
-async function handleCast(io: Server, state: PlayerState) {
+async function handleCast(io: Server, state: PlayerState, channel: string) {
+    const channelKey = (channel ?? 'default').toLowerCase();
+    const now = Date.now();
+    const existingLock = overlayLocks.get(channelKey);
+    if (existingLock && existingLock.expiresAt > now && existingLock.scopedKey !== state.scopedKey) {
+        const remainingMs = Math.max(0, existingLock.expiresAt - now);
+        emit(io, { type: 'status', text: `Overlay busy: ${existingLock.user} is reeling. ${formatDuration(remainingMs)} left.` });
+        pushLog(io, `${state.username} blocked: overlay locked by ${existingLock.user} (${formatDuration(remainingMs)} remaining).`);
+        return;
+    }
+
     if (state.isCasting) {
         emit(io, { type: 'status', text: `${state.username} already has a line in the water.` });
         return;
     }
+
+    const sessionId = existingLock && existingLock.scopedKey === state.scopedKey && existingLock.expiresAt > now ? existingLock.sessionId : randomUUID();
+    const sessionExpiresAt = now + tugMaxDelayMs + tugResponseWindowMs + tugFailSafeBufferMs + 3000;
+    overlayLocks.set(channelKey, { scopedKey: state.scopedKey, user: state.username, sessionId, expiresAt: sessionExpiresAt });
 
     if (state.activeBait?.expiresAt && state.activeBait.expiresAt < Date.now()) {
         state.activeBait = undefined;
@@ -1526,7 +1550,7 @@ async function handleCast(io: Server, state: PlayerState) {
             if (!state.isCasting) return;
             state.isCasting = false;
             state.hasTug = false;
-            emit(io, { type: 'catch', user: state.username, success: false });
+            emit(io, { type: 'catch', user: state.username, success: false, sessionId });
             emit(io, { type: 'status', text: `${state.username}'s line went slack.` });
             pushLog(io, `${state.username} let the line go slack (timed out).`);
             clearTug(state.scopedKey);
@@ -1534,6 +1558,7 @@ async function handleCast(io: Server, state: PlayerState) {
                 state.activeBait.uses -= 1;
                 if (state.activeBait.uses <= 0) state.activeBait = undefined;
             }
+            clearOverlayLock(channelKey, sessionId);
         }, delayMs);
         decayTimers.set(state.scopedKey, decay);
     };
@@ -1544,17 +1569,22 @@ async function handleCast(io: Server, state: PlayerState) {
 
     const timer = setTimeout(() => {
         state.hasTug = true;
-        emit(io, { type: 'tug', user: state.username });
+        // Extend the lock window through the reel response time
+        overlayLocks.set(channelKey, { scopedKey: state.scopedKey, user: state.username, sessionId, expiresAt: Date.now() + tugResponseWindowMs + tugFailSafeBufferMs });
+        emit(io, { type: 'tug', user: state.username, sessionId });
         // Give players a generous window after seeing the tug to handle stream delay
         scheduleDecay(tugResponseWindowMs);
     }, eta);
     tugTimers.set(state.scopedKey, timer);
 
-    emit(io, { type: 'cast', user: state.username, etaMs: eta });
+    emit(io, { type: 'cast', user: state.username, etaMs: eta, sessionId });
     pushLog(io, `${state.username} casts their line.`);
 }
 
-async function handleReel(io: Server, state: PlayerState) {
+async function handleReel(io: Server, state: PlayerState, channel: string) {
+    const channelKey = (channel ?? 'default').toLowerCase();
+    const sessionId = overlayLocks.get(channelKey)?.sessionId;
+
     if (!state.isCasting) {
         emit(io, { type: 'status', text: `${state.username} needs to !cast first.` });
         return;
@@ -1569,12 +1599,13 @@ async function handleReel(io: Server, state: PlayerState) {
             state.hasTug = true; // forgive the early reel and treat as if a tug was present
         } else {
             state.isCasting = false;
-            emit(io, { type: 'catch', user: state.username, success: false });
+            emit(io, { type: 'catch', user: state.username, success: false, sessionId });
             pushLog(io, `${state.username} reeled in too early.`);
             if (state.activeBait) {
                 state.activeBait.uses -= 1;
                 if (state.activeBait.uses <= 0) state.activeBait = undefined;
             }
+            clearOverlayLock(channelKey, sessionId);
             return;
         }
     }
@@ -1657,6 +1688,7 @@ async function handleReel(io: Server, state: PlayerState) {
         goldEarned,
         xpGained,
         rarity: rarity.rarity,
+        sessionId,
     });
 
     emit(io, { type: 'inventory', state: ensurePublic(state) });
@@ -1675,6 +1707,7 @@ async function handleReel(io: Server, state: PlayerState) {
     } else {
         pushLog(io, `${state.username} caught a ${item.rarity} ${item.name} (+${goldEarned}g, +${xpGained}xp).`);
     }
+    clearOverlayLock(channelKey, sessionId);
 }
 
 async function handleStore(io: Server, state?: PlayerState) {
@@ -2754,7 +2787,8 @@ export async function processChatCommand(io: Server, payload: ChatCommandEvent &
 
     const lastGlobal = lastGlobalCommandAt.get(chan) ?? 0;
     const globalRemainingMs = disableGlobalCooldown ? 0 : globalCommandCooldownMs - (now - lastGlobal);
-    if (isChatOrigin && globalCommandCooldownMs > 0 && !isMod && !isBroadcaster && globalRemainingMs > 0) {
+    // Only gate fishing commands (cast/reel) behind the global chat cooldown
+    if (isChatOrigin && isFishingCommand && globalCommandCooldownMs > 0 && !isMod && !isBroadcaster && globalRemainingMs > 0) {
         const reason = `Global cooldown active: ${formatDuration(globalRemainingMs)} remaining.`;
         emit(io, { type: 'status', text: `${username}: ${reason}` });
         pushLog(io, `${username} blocked by global cooldown (${formatDuration(globalRemainingMs)} remaining).`);
@@ -2778,26 +2812,18 @@ export async function processChatCommand(io: Server, payload: ChatCommandEvent &
         return;
     }
     const inOwnSession = interactionLock?.scopedKey === scopedKey;
-    const enforceCooldown = remainingMs > 0;
+    // Per-user cooldown only gates fishing commands so panel/store flows stay snappy
+    const enforceCooldown = remainingMs > 0 && isFishingCommand;
 
     if (enforceCooldown && remainingMs > 0) {
         const reason = `${username}, cooldown active: ${formatDuration(remainingMs)} remaining.`;
         emit(io, { type: 'status', text: reason });
-        if (command === 'store' || command === 'upgrades') {
-            emitStoreLocked(io, reason, remainingMs, maxInteractionRefreshes - (interactionLock?.refreshesUsed ?? 0), username);
-        }
-        if (command === 'inventory') {
-            emitInventoryLocked(io, await loadPlayer(username, chan), reason);
-        }
         pushLog(io, `${username} blocked: cooldown ${formatDuration(remainingMs)} remaining.`);
         return;
     }
 
-    if (enforceCooldown && !isFishingCommand) {
-        lastCommandAt.set(scopedKey, now);
-    }
-
-    if (isChatOrigin && globalCommandCooldownMs > 0 && !disableGlobalCooldown) {
+    // Store global cooldown timestamp only when a fishing command passes the gate
+    if (isChatOrigin && isFishingCommand && globalCommandCooldownMs > 0 && !disableGlobalCooldown) {
         lastGlobalCommandAt.set(chan, now);
     }
 
@@ -2821,10 +2847,10 @@ export async function processChatCommand(io: Server, payload: ChatCommandEvent &
             await handleFish(io, state);
             break;
         case 'cast':
-            await handleCast(io, state);
+            await handleCast(io, state, chan);
             break;
         case 'reel':
-            await handleReel(io, state);
+            await handleReel(io, state, chan);
             lastCommandAt.set(scopedKey, Date.now());
             break;
         case 'store':

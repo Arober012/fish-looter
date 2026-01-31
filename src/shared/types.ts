@@ -204,9 +204,9 @@ export interface ChatCommandEvent {
 export type OverlayEvent =
     | { type: 'status'; text: string }
     | { type: 'log'; line: string }
-    | { type: 'cast'; user: string; etaMs: number }
-    | { type: 'tug'; user: string }
-    | { type: 'catch'; user: string; success: boolean; item?: InventoryItem; goldEarned?: number; xpGained?: number; rarity?: Rarity }
+    | { type: 'cast'; user: string; etaMs: number; sessionId?: string }
+    | { type: 'tug'; user: string; sessionId?: string }
+    | { type: 'catch'; user: string; success: boolean; item?: InventoryItem; goldEarned?: number; xpGained?: number; rarity?: Rarity; sessionId?: string }
     | { type: 'level'; level: number; xp: number; xpNeeded: number }
     | { type: 'store'; items: StoreItem[]; upgrades: UpgradeDefinition[]; expiresAt?: number; locked?: { reason: string; remainingMs?: number; refreshesLeft?: number }; user?: string }
     | { type: 'inventory'; state: PlayerStatePublic; locked?: { reason: string; remainingMs?: number; refreshesLeft?: number } }

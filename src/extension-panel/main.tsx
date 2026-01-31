@@ -355,9 +355,22 @@ function App() {
     const transports = devMode ? ['websocket', 'polling'] : ['polling'];
     const socket = io(socketUrl, { transports, upgrade: devMode, withCredentials: true });
     socketRef.current = socket;
+    const firstConnect = { value: true };
 
     socket.on('connect', () => {
-      setStatus((prev) => (prev.startsWith('Waiting') ? 'Live sync connected' : prev));
+      setStatus((prev) => (prev.startsWith('Waiting') ? 'Live sync connected' : 'Live sync connected'));
+      if (!firstConnect.value) {
+        refresh('Live sync reconnected — state refreshed').catch((err) => console.warn('Live sync refresh failed', err));
+      }
+      firstConnect.value = false;
+    });
+
+    socket.on('disconnect', (reason: string) => {
+      setStatus(`Live sync disconnected (${reason || 'unknown'}) — retrying...`);
+    });
+
+    socket.on('connect_error', (err: any) => {
+      setStatus(`Live sync error: ${err?.message || 'connect_error'}`);
     });
 
     socket.on('overlay-event', (evt: OverlayEvent) => {

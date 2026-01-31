@@ -473,6 +473,17 @@ listChannels()
     })
     .catch((err) => console.warn('[twitch] Failed to load channels for chat bridge', err));
 
+// Periodic health check to ensure chat clients remain connected after OBS/stream restarts
+const chatHealthIntervalMs = Number(process.env.TWITCH_CHAT_HEALTH_MS || 60000);
+setInterval(async () => {
+    try {
+        const records = await listChannels();
+        await Promise.all(records.map((rec) => chatBridge.ensureConnected(rec)));
+    } catch (err) {
+        console.warn('[twitch] chat health check failed', err);
+    }
+}, chatHealthIntervalMs);
+
 // Serve panel bundle explicitly so it is not caught by the overlay SPA fallback
 app.get(['/panel', '/panel.html'], (_req: Request, res: Response) => {
     if (fs.existsSync(panelHtmlPath)) {
