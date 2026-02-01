@@ -703,24 +703,31 @@ function App() {
     );
   };
 
-  const renderStore = () => (
-    <section className="card">
-      <div className="section-title">Store</div>
-      <div className="muted tiny">Auto refresh in {autoRefreshText} • Manual refresh {manualRefreshText}</div>
-      {store.length === 0 ? <div className="muted">No store items available.</div> : (
-        <div className="grid three">
-          {store.map((item) => (
-            <div key={item.key} className="subcard">
-              <div className="item-title">{item.name}</div>
-              <div className="muted tiny">{item.rarity} • {item.cost}g{item.minLevel ? ` • Req ${item.minLevel}` : ''}</div>
-              {item.description && <div className="muted tiny">{item.description}</div>}
-              <button className="primary" disabled={loading} onClick={() => doPanel('/api/panel/buy', { itemKey: item.key }, `Bought ${item.name}`)}>Buy</button>
-            </div>
-          ))}
+  const renderStore = () => {
+    if (!state) return null;
+    return (
+      <section className="card">
+        <div className="section-title">Store</div>
+        <div className="pill-row" style={{ marginBottom: 6 }}>
+          <span className="pill">Gold {state.gold}g</span>
+          <span className="pill">Bag {state.inventory.length}/{state.inventoryCap}</span>
         </div>
-      )}
-    </section>
-  );
+        <div className="muted tiny">Auto refresh in {autoRefreshText} • Manual refresh {manualRefreshText}</div>
+        {store.length === 0 ? <div className="muted">No store items available.</div> : (
+          <div className="grid three">
+            {store.map((item) => (
+              <div key={item.key} className="subcard">
+                <div className="item-title">{item.name}</div>
+                <div className="muted tiny">{item.rarity} • {item.cost}g{item.minLevel ? ` • Req ${item.minLevel}` : ''}</div>
+                {item.description && <div className="muted tiny">{item.description}</div>}
+                <button className="primary" disabled={loading} onClick={() => doPanel('/api/panel/buy', { itemKey: item.key }, `Bought ${item.name}`)}>Buy</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+    );
+  };
 
   const renderUpgrades = () => (
     <section className="card">
