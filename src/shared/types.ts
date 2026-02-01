@@ -211,7 +211,8 @@ export type OverlayEvent =
     | { type: 'level'; level: number; xp: number; xpNeeded: number }
     | { type: 'store'; items: StoreItem[]; upgrades: UpgradeDefinition[]; expiresAt?: number; locked?: { reason: string; remainingMs?: number; refreshesLeft?: number }; user?: string }
     | { type: 'inventory'; state: PlayerStatePublic; locked?: { reason: string; remainingMs?: number; refreshesLeft?: number } }
-    | { type: 'sell'; gold: number; item?: InventoryItem; count?: number }
+    | { type: 'sell'; gold: number; item?: InventoryItem; count?: number; user?: string }
+    | { type: 'panel-loot'; item: InventoryItem; goldEarned?: number; autoSold?: boolean; user?: string }
     | { type: 'save'; ok: boolean; message?: string }
     | { type: 'theme'; theme: ThemePalette }
     | { type: 'skin'; user: string; skinId: PoleSkinId }

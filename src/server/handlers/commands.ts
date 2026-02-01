@@ -2079,7 +2079,7 @@ async function handleSell(io: Server, state: PlayerState, args: string[], fromPa
         const total = state.inventory.reduce((sum, item) => sum + (item.value ?? 0), 0);
         state.gold += total;
         state.inventory = [];
-        emit(io, { type: 'sell', gold: total, count });
+        emit(io, { type: 'sell', gold: total, count, user: state.username });
         status(`${state.username} sold all (${count}) items for ${total}g.`);
         emit(io, { type: 'inventory', state: ensurePublic(state) });
         log(`${state.username} sold all (${count}) items for ${total}g.`);
@@ -2104,7 +2104,7 @@ async function handleSell(io: Server, state: PlayerState, args: string[], fromPa
     }
 
     state.gold += sold.value;
-    emit(io, { type: 'sell', gold: sold.value, item: sold });
+    emit(io, { type: 'sell', gold: sold.value, item: sold, user: state.username });
     status(`${state.username} sold ${sold.name} for ${sold.value}g.`);
     emit(io, { type: 'inventory', state: ensurePublic(state) });
     log(`${state.username} sold ${sold.name} for ${sold.value}g.`);
@@ -2441,11 +2441,13 @@ async function handleUse(io: Server, state: PlayerState, args: string[], fromPan
             status(`${state.username} opened ${item.name} but inventory was full; auto-sold ${reward.name} for ${reward.value}g.`);
             emit(io, { type: 'inventory', state: ensurePublic(state) });
             log(`${state.username} opened ${item.name} (auto-sold ${reward.name} for ${reward.value}g, full inventory).`);
+            emit(io, { type: 'panel-loot', item: reward, goldEarned: reward.value, autoSold: true, user: state.username });
         } else {
             state.inventory.push(reward);
             status(`${state.username} opened ${item.name} and found a ${reward.rarity} ${reward.name}.`);
             emit(io, { type: 'inventory', state: ensurePublic(state) });
             log(`${state.username} opened ${item.name} -> ${reward.rarity} ${reward.name}.`);
+            emit(io, { type: 'panel-loot', item: reward, goldEarned: 0, autoSold: false, user: state.username });
         }
         return;
     }

@@ -382,6 +382,24 @@ function App() {
             setStatus('Inventory updated');
           }
           break;
+        case 'sell': {
+          if (evt.user && !isMyEvent(evt.user)) break;
+          const detail = evt.count
+            ? `${evt.count} item${evt.count === 1 ? '' : 's'} sold for ${evt.gold}g.`
+            : evt.item
+              ? `${evt.item.name} sold for ${evt.gold}g.`
+              : `Sold items for ${evt.gold}g.`;
+          setStatus(detail);
+          break;
+        }
+        case 'panel-loot': {
+          if (evt.user && !isMyEvent(evt.user)) break;
+          const text = evt.autoSold
+            ? `Chest reward auto-sold: ${evt.item.name} for ${evt.goldEarned ?? 0}g (bag full).`
+            : `Chest reward: ${evt.item.rarity} ${evt.item.name}${evt.goldEarned ? ` (+${evt.goldEarned}g)` : ''}.`;
+          setStatus(text);
+          break;
+        }
         case 'panel-status':
           setStatus(evt.text);
           break;
