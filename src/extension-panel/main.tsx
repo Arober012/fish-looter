@@ -650,8 +650,8 @@ function App() {
                 <option key={i.id} value={i.name}>{i.name} ({i.rarity})</option>
               ))}
             </select>
-            <button className="ghost" disabled={loading || !sellItemId} onClick={() => doPanel('/api/panel/sell', { name: sellItemId }, `Sold ${sellItemId}`)}>Sell Item</button>
-            <button className="ghost" disabled={loading || state.inventory.length === 0} onClick={() => doPanel('/api/panel/sell', { sellAll: true }, 'Sold all sellable items')}>Sell All</button>
+            <button className="ghost" disabled={loading || !sellItemId} onClick={() => doPanel('/api/panel/sell', { name: sellItemId })}>Sell Item</button>
+            <button className="ghost" disabled={loading || state.inventory.length === 0} onClick={() => doPanel('/api/panel/sell', { sellAll: true })}>Sell All</button>
           </div>
           <div className="form-row wrap">
             <select value={useItemName} onChange={(e) => setUseItemName(e.target.value)} disabled={loading}>
