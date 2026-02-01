@@ -1578,10 +1578,10 @@ async function handleCast(io: Server, state: PlayerState, channel: string, sendC
         overlayLocks.set(channelKey, { scopedKey: state.scopedKey, user: state.username, sessionId, expiresAt: Date.now() + tugResponseWindowMs + tugFailSafeBufferMs, phase: 'tugging' });
         emit(io, { type: 'tug', user: state.username, sessionId });
         if (sendChat) {
-            // Small delay to allow overlay to enter tug state before chat prompt appears
+            // Delay chat prompt to better align with overlay tug state and account for stream/player latency
             setTimeout(() => {
                 sendChat(`@${state.username} tug! Type !reel to pull it in.`).catch(() => undefined);
-            }, 250);
+            }, 750);
         }
         // Give players a generous window after seeing the tug to handle stream delay
         scheduleDecay(tugResponseWindowMs);
