@@ -660,7 +660,7 @@ function App() {
                 <option key={i.id} value={i.name}>{i.name} ({i.rarity})</option>
               ))}
             </select>
-            <button className="primary" disabled={loading || !useItemName} onClick={() => doPanel('/api/panel/use', { name: useItemName }, `Used ${useItemName}`)}>Use Item</button>
+            <button className="primary" disabled={loading || !useItemName} onClick={() => doPanel('/api/panel/use', { name: useItemName })}>Use Item</button>
             <div className="muted tiny">Tip: chat still supports !use &lt;item&gt; for interactive engagement.</div>
           </div>
         </section>
