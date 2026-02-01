@@ -875,7 +875,7 @@ const charmTimers = new Map<string, NodeJS.Timeout>();
 const overlayLocks = new Map<string, { scopedKey: string; user: string; sessionId: string; expiresAt: number; phase: 'casting' | 'tugging' | 'reeling' }>();
 const tugMinDelayMs = 2000;
 const tugMaxDelayMs = 6000;
-const tugResponseWindowMs = 10000; // time to react after tug fires (covers stream delay)
+const tugResponseWindowMs = 15000; // time to react after tug fires (covers stream delay)
 const tugFailSafeBufferMs = 2000; // prevents getting stuck if tug timer misfires
 
 type TimedBuff = { amount: number; timer: NodeJS.Timeout; endsAt: number; label?: string };
