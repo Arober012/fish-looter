@@ -382,6 +382,9 @@ function App() {
             setStatus('Inventory updated');
           }
           break;
+        case 'panel-status':
+          setStatus(evt.text);
+          break;
         case 'store':
           if (!isMyEvent(evt.user)) break;
           setStore(evt.items || []);

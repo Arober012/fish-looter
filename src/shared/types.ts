@@ -203,6 +203,7 @@ export interface ChatCommandEvent {
 
 export type OverlayEvent =
     | { type: 'status'; text: string }
+    | { type: 'panel-status'; text: string; user?: string }
     | { type: 'log'; line: string }
     | { type: 'cast'; user: string; etaMs: number; sessionId?: string }
     | { type: 'tug'; user: string; sessionId?: string }

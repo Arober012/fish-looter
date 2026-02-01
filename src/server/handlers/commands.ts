@@ -884,8 +884,8 @@ const valueBuffTimers = new Map<string, TimedBuff[]>();
 let themeSent = false;
 const lastCommandAt = new Map<string, number>();
 const lastGlobalCommandAt = new Map<string, number>();
-const DEFAULT_USER_COOLDOWN_MS = 35 * 1000;
-const DEFAULT_GLOBAL_COOLDOWN_MS = 0; // disabled by default
+const DEFAULT_USER_COOLDOWN_MS = 6 * 1000;
+const DEFAULT_GLOBAL_COOLDOWN_MS = 8 * 1000;
 let userCommandCooldownMs = DEFAULT_USER_COOLDOWN_MS;
 let globalCommandCooldownMs = DEFAULT_GLOBAL_COOLDOWN_MS;
 const interactionTimeoutMs = 25 * 1000;
@@ -1163,6 +1163,11 @@ function pushLog(io: Server, line: string) {
 function emitStoreLocked(io: Server, reason: string, remainingMs?: number, refreshesLeft?: number, user?: string) {
     const cfg = getStoreConfig(getCatalogSnapshot());
     emit(io, { type: 'store', items: [], upgrades: [], expiresAt: Date.now() + cfg.rotationMs, locked: { reason, remainingMs, refreshesLeft }, user });
+}
+
+function emitStatus(io: Server, text: string, opts?: { panelOnly?: boolean; user?: string }) {
+    const { panelOnly, user } = opts || {};
+    emit(io, { type: panelOnly ? 'panel-status' : 'status', text, user: panelOnly ? user : undefined });
 }
 
 function emitInventoryLocked(io: Server, state: PlayerState, reason: string) {
@@ -1729,13 +1734,14 @@ async function handleReel(io: Server, state: PlayerState, channel: string, _send
     clearOverlayLock(channelKey, sessionId);
 }
 
-async function handleStore(io: Server, state?: PlayerState) {
+async function handleStore(io: Server, state?: PlayerState, fromPanel = false) {
+    const status = (text: string) => emitStatus(io, text, { panelOnly: fromPanel, user: state?.username });
     if (state) {
         const announce = !interactionLock || interactionLock.scopedKey !== state.scopedKey || interactionLock.mode !== 'store';
         beginInteraction(io, state, 'store', announce);
         const refreshesLeft = interactionLock ? Math.max(0, maxInteractionRefreshes - interactionLock.refreshesUsed) : maxInteractionRefreshes;
         const remainingMs = interactionLock ? Math.max(0, interactionLock.expiresAt - Date.now()) : interactionTimeoutMs;
-        emit(io, { type: 'status', text: `${state.username}, store session active: ${formatDuration(remainingMs)} left, ${refreshesLeft} refresh${refreshesLeft === 1 ? '' : 'es'} remaining.` });
+        status(`${state.username}, store session active: ${formatDuration(remainingMs)} left, ${refreshesLeft} refresh${refreshesLeft === 1 ? '' : 'es'} remaining.`);
     }
     const cfg = getStoreConfig(getCatalogSnapshot());
     const rotation = storeRotation ?? { items: currentStoreItems(), expiresAt: Date.now() + cfg.rotationMs };
@@ -1748,15 +1754,19 @@ async function handleStore(io: Server, state?: PlayerState) {
     emit(io, { type: 'store', items: priced, upgrades: getUpgrades(state), expiresAt: rotation.expiresAt, user: state?.username });
 }
 
-async function handleStoreRefresh(io: Server, state: PlayerState) {
+async function handleStoreRefresh(io: Server, state: PlayerState, fromPanel = false) {
+    const status = (text: string) => emitStatus(io, text, { panelOnly: fromPanel, user: state.username });
+    const log = (line: string) => {
+        if (!fromPanel) pushLog(io, line);
+    };
     const catalog = getCatalogSnapshot();
     const cfg = getStoreConfig(catalog);
     const now = Date.now();
     const last = lastStoreRefresh.get(state.scopedKey) ?? 0;
     if (now - last < storeRefreshCooldownMs) {
         const remaining = storeRefreshCooldownMs - (now - last);
-        emit(io, { type: 'status', text: `${state.username}: store refresh on cooldown (${formatDuration(remaining)} remaining).` });
-        pushLog(io, `${state.username} attempted store refresh but is on cooldown (${formatDuration(remaining)} remaining).`);
+        status(`${state.username}: store refresh on cooldown (${formatDuration(remaining)} remaining).`);
+        log(`${state.username} attempted store refresh but is on cooldown (${formatDuration(remaining)} remaining).`);
         return;
     }
 
@@ -1774,17 +1784,18 @@ async function handleStoreRefresh(io: Server, state: PlayerState) {
     const priced = priceStoreItemsForState(filtered, state);
     emit(io, { type: 'store', items: priced, upgrades: getUpgrades(state), expiresAt, user: state.username });
     const hoursLabel = cfg.rotationHours >= 1 ? `${cfg.rotationHours}h` : `${Math.round((cfg.rotationHours * 60))}m`;
-    emit(io, { type: 'status', text: `${state.username} refreshed the store. Next auto refresh in ${hoursLabel}; personal cooldown 8h.` });
-    pushLog(io, `${state.username} manually refreshed the store (next auto in ${hoursLabel}, personal cooldown 8h).`);
+    status(`${state.username} refreshed the store. Next auto refresh in ${hoursLabel}; personal cooldown 8h.`);
+    log(`${state.username} manually refreshed the store (next auto in ${hoursLabel}, personal cooldown 8h).`);
 }
 
-async function handleUpgrades(io: Server, state?: PlayerState) {
+async function handleUpgrades(io: Server, state?: PlayerState, fromPanel = false) {
+    const status = (text: string) => emitStatus(io, text, { panelOnly: fromPanel, user: state?.username });
     if (state) {
         const announce = !interactionLock || interactionLock.scopedKey !== state.scopedKey || interactionLock.mode !== 'store';
         beginInteraction(io, state, 'store', announce);
         const refreshesLeft = interactionLock ? Math.max(0, maxInteractionRefreshes - interactionLock.refreshesUsed) : maxInteractionRefreshes;
         const remainingMs = interactionLock ? Math.max(0, interactionLock.expiresAt - Date.now()) : interactionTimeoutMs;
-        emit(io, { type: 'status', text: `${state.username}, upgrades session active: ${formatDuration(remainingMs)} left, ${refreshesLeft} refresh${refreshesLeft === 1 ? '' : 'es'} remaining.` });
+        status(`${state.username}, upgrades session active: ${formatDuration(remainingMs)} left, ${refreshesLeft} refresh${refreshesLeft === 1 ? '' : 'es'} remaining.`);
     }
     const cfg = getStoreConfig(getCatalogSnapshot());
     const rotation = storeRotation ?? { items: currentStoreItems(), expiresAt: Date.now() + cfg.rotationMs };
@@ -1797,18 +1808,23 @@ async function handleUpgrades(io: Server, state?: PlayerState) {
     emit(io, { type: 'store', items: priced, upgrades: getUpgrades(state), expiresAt: rotation.expiresAt, user: state?.username });
 }
 
-async function handleInventory(io: Server, state: PlayerState) {
+async function handleInventory(io: Server, state: PlayerState, fromPanel = false) {
+    const status = (text: string) => emitStatus(io, text, { panelOnly: fromPanel, user: state.username });
     const announce = !interactionLock || interactionLock.scopedKey !== state.scopedKey || interactionLock.mode !== 'inventory';
     beginInteraction(io, state, 'inventory', announce);
     const refreshesLeft = interactionLock ? Math.max(0, maxInteractionRefreshes - interactionLock.refreshesUsed) : maxInteractionRefreshes;
     const remainingMs = interactionLock ? Math.max(0, interactionLock.expiresAt - Date.now()) : interactionTimeoutMs;
-    emit(io, { type: 'status', text: `${state.username}, inventory session active: ${formatDuration(remainingMs)} left, ${refreshesLeft} refresh${refreshesLeft === 1 ? '' : 'es'} remaining.` });
+    status(`${state.username}, inventory session active: ${formatDuration(remainingMs)} left, ${refreshesLeft} refresh${refreshesLeft === 1 ? '' : 'es'} remaining.`);
     emit(io, { type: 'inventory', state: ensurePublic(state) });
 }
 
-async function handleBuy(io: Server, state: PlayerState, args: string[]) {
+async function handleBuy(io: Server, state: PlayerState, args: string[], fromPanel = false) {
+    const status = (text: string) => emitStatus(io, text, { panelOnly: fromPanel, user: state.username });
+    const log = (line: string) => {
+        if (!fromPanel) pushLog(io, line);
+    };
     if (!args.length) {
-        emit(io, { type: 'status', text: 'Usage: !buy <item> [quantity]' });
+        status('Usage: !buy <item> [quantity]');
         return;
     }
 
@@ -1823,7 +1839,7 @@ async function handleBuy(io: Server, state: PlayerState, args: string[]) {
     }
 
     if (argCopy.length === 0) {
-        emit(io, { type: 'status', text: 'Usage: !buy <item> [quantity]' });
+        status('Usage: !buy <item> [quantity]');
         return;
     }
 
@@ -1832,7 +1848,7 @@ async function handleBuy(io: Server, state: PlayerState, args: string[]) {
     const upgrade = availableUpgrades.find((u) => u.key === query || u.name.toLowerCase() === query);
     if (upgrade) {
         if (quantity > 1) {
-            emit(io, { type: 'status', text: 'Upgrades are bought one at a time.' });
+            status('Upgrades are bought one at a time.');
             return;
         }
 
@@ -1852,11 +1868,11 @@ async function handleBuy(io: Server, state: PlayerState, args: string[]) {
             if (entry.count >= maxPerWindow) {
                 const waitMs = entry.resetAt - now;
                 const hrs = Math.max(1, Math.ceil(waitMs / (60 * 60 * 1000)));
-                emit(io, { type: 'status', text: `${upgrade.name} limit reached. Try again in ~${hrs}h.` });
+                status(`${upgrade.name} limit reached. Try again in ~${hrs}h.`);
                 return;
             }
             if (state.gold < upgrade.cost) {
-                emit(io, { type: 'status', text: `Not enough gold for ${upgrade.name}.` });
+                status(`Not enough gold for ${upgrade.name}.`);
                 return;
             }
             state.gold -= upgrade.cost;
@@ -1866,12 +1882,12 @@ async function handleBuy(io: Server, state: PlayerState, args: string[]) {
 
             if (upgrade.key === 'journal') {
                 addTimedBuff(state, 'xp', 0.15, journalDuration, xpBuffTimers, io, `${state.username}'s journal study ended.`);
-                emit(io, { type: 'status', text: `${state.username} studied a Journal: +15% XP for 5m (uses ${entry.count}/${maxPerWindow}).` });
-                pushLog(io, `${state.username} started a journal XP boost (5m, +15%).`);
+                status(`${state.username} studied a Journal: +15% XP for 5m (uses ${entry.count}/${maxPerWindow}).`);
+                log(`${state.username} started a journal XP boost (5m, +15%).`);
             } else if (upgrade.key === 'rod') {
                 addTimedBuff(state, 'value', 0.2, rodDuration, valueBuffTimers, io, `${state.username}'s rod reinforcement faded.`);
-                emit(io, { type: 'status', text: `${state.username} reinforced their rod: +20% value for 3m (uses ${entry.count}/${maxPerWindow}).` });
-                pushLog(io, `${state.username} started a rod value boost (3m, +20%).`);
+                status(`${state.username} reinforced their rod: +20% value for 3m (uses ${entry.count}/${maxPerWindow}).`);
+                log(`${state.username} started a rod value boost (3m, +20%).`);
             }
 
             emit(io, { type: 'inventory', state: ensurePublic(state) });
@@ -1879,15 +1895,15 @@ async function handleBuy(io: Server, state: PlayerState, args: string[]) {
         } else if (upgrade.key === 'prestige') {
             const prestigeCount = state.prestigeCount ?? 0;
             if (prestigeCount >= 3) {
-                emit(io, { type: 'status', text: 'Maximum prestige reached.' });
+                status('Maximum prestige reached.');
                 return;
             }
             if (state.level < 60) {
-                emit(io, { type: 'status', text: 'Prestige requires level 60.' });
+                status('Prestige requires level 60.');
                 return;
             }
             if (state.gold < upgrade.cost) {
-                emit(io, { type: 'status', text: `Not enough gold for ${upgrade.name}.` });
+                status(`Not enough gold for ${upgrade.name}.`);
                 return;
             }
 
@@ -1902,8 +1918,8 @@ async function handleBuy(io: Server, state: PlayerState, args: string[]) {
             if (state.prestigeCount >= 3) state.enchantmentsUnlocked = true;
 
             const perk = state.prestigeCount === 1 ? 'Crafting unlocked' : state.prestigeCount === 2 ? 'Trading unlocked' : 'Enchantments unlocked';
-            emit(io, { type: 'status', text: `${state.username} prestiged (${state.prestigeCount}/3)! ${perk}; level reset to 1.` });
-            pushLog(io, `${state.username} prestiged (${state.prestigeCount}/3): ${perk.toLowerCase()}.`);
+            status(`${state.username} prestiged (${state.prestigeCount}/3)! ${perk}; level reset to 1.`);
+            log(`${state.username} prestiged (${state.prestigeCount}/3): ${perk.toLowerCase()}.`);
             emit(io, { type: 'level', level: state.level, xp: state.xp, xpNeeded: state.xpNeeded });
             emit(io, { type: 'inventory', state: ensurePublic(state) });
             return;
@@ -1912,20 +1928,20 @@ async function handleBuy(io: Server, state: PlayerState, args: string[]) {
         // Default behavior for other upgrades (e.g., lure progression)
         const currentLevel = upgrade.stat === 'rarity' ? state.lureLevel : upgrade.stat === 'value' ? state.poleLevel : state.luck;
         if (currentLevel >= upgrade.maxLevel) {
-            emit(io, { type: 'status', text: `${upgrade.name} is already maxed.` });
+            status(`${upgrade.name} is already maxed.`);
             return;
         }
         if (state.gold < upgrade.cost) {
-            emit(io, { type: 'status', text: `Not enough gold for ${upgrade.name}.` });
+            status(`Not enough gold for ${upgrade.name}.`);
             return;
         }
         state.gold -= upgrade.cost;
         if (upgrade.stat === 'rarity') state.lureLevel += 1;
         if (upgrade.stat === 'value') state.poleLevel += 1;
         if (upgrade.stat === 'xp') state.luck += 1;
-        emit(io, { type: 'status', text: `${state.username} bought ${upgrade.name}.` });
+        status(`${state.username} bought ${upgrade.name}.`);
         emit(io, { type: 'inventory', state: ensurePublic(state) });
-        pushLog(io, `${state.username} upgraded ${upgrade.name}.`);
+        log(`${state.username} upgraded ${upgrade.name}.`);
         return;
     }
 
@@ -1939,15 +1955,15 @@ async function handleBuy(io: Server, state: PlayerState, args: string[]) {
 
     if (skin) {
         if (quantity > 1) {
-            emit(io, { type: 'status', text: 'Skins can only be bought once.' });
+            status('Skins can only be bought once.');
             return;
         }
         if (state.ownedPoleSkins && state.ownedPoleSkins.includes(skin.id)) {
-            emit(io, { type: 'status', text: `${skin.name} is already owned.` });
+            status(`${skin.name} is already owned.`);
             return;
         }
         if (state.level < skin.levelReq) {
-            emit(io, { type: 'status', text: `Level ${skin.levelReq} required for ${skin.name}.` });
+            status(`Level ${skin.levelReq} required for ${skin.name}.`);
             return;
         }
         const skinCost = priceStoreItem(item ?? {
@@ -1961,7 +1977,7 @@ async function handleBuy(io: Server, state: PlayerState, args: string[]) {
             minLevel: skin.levelReq,
         }, state);
         if (state.gold < skinCost) {
-            emit(io, { type: 'status', text: `Not enough gold for ${skin.name}.` });
+            status(`Not enough gold for ${skin.name}.`);
             return;
         }
         state.gold -= skinCost;
@@ -1969,12 +1985,12 @@ async function handleBuy(io: Server, state: PlayerState, args: string[]) {
         state.ownedPoleSkins = Array.from(new Set([...(state.ownedPoleSkins ?? []), skin.id]));
         emit(io, { type: 'skin', user: state.username, skinId: skin.id });
         emit(io, { type: 'inventory', state: ensurePublic(state) });
-        pushLog(io, `${state.username} unlocked ${skin.name} skin for ${skinCost}g.`);
+        log(`${state.username} unlocked ${skin.name} skin for ${skinCost}g.`);
         return;
     }
 
     if (!item) {
-        emit(io, { type: 'status', text: `Item not available right now: ${query} (store rotates every 4h).` });
+        status(`Item not available right now: ${query} (store rotates every 4h).`);
         return;
     }
 
@@ -1983,50 +1999,50 @@ async function handleBuy(io: Server, state: PlayerState, args: string[]) {
     if (item.key === 'bag-upgrade') {
         const remaining = Math.max(0, Math.floor((inventoryCapMax - state.inventoryCap) / inventoryCapStep));
         if (remaining <= 0) {
-            emit(io, { type: 'status', text: 'Inventory space is already at the max (30).' });
+            status('Inventory space is already at the max (30).');
             return;
         }
         if (quantity > remaining) {
-            emit(io, { type: 'status', text: `Only ${remaining} inventory expansion${remaining === 1 ? '' : 's'} left (max 30).` });
+            status(`Only ${remaining} inventory expansion${remaining === 1 ? '' : 's'} left (max 30).`);
             return;
         }
         const totalCost = unitCost * quantity;
         if (state.gold < totalCost) {
-            emit(io, { type: 'status', text: `Not enough gold for ${quantity}x ${item.name}.` });
+            status(`Not enough gold for ${quantity}x ${item.name}.`);
             return;
         }
         state.gold -= totalCost;
         state.inventoryCap = Math.min(inventoryCapMax, state.inventoryCap + inventoryCapStep * quantity);
-        emit(io, { type: 'status', text: `${state.username} expanded inventory to ${state.inventoryCap} slots.` });
+        status(`${state.username} expanded inventory to ${state.inventoryCap} slots.`);
         emit(io, { type: 'inventory', state: ensurePublic(state) });
-        pushLog(io, `${state.username} bought ${quantity}x ${item.name} (+${inventoryCapStep * quantity} slots, now ${state.inventoryCap}).`);
+        log(`${state.username} bought ${quantity}x ${item.name} (+${inventoryCapStep * quantity} slots, now ${state.inventoryCap}).`);
         return;
     }
 
     if (item.minLevel && state.level < item.minLevel) {
-        emit(io, { type: 'status', text: `Level ${item.minLevel} required for ${item.name}.` });
+        status(`Level ${item.minLevel} required for ${item.name}.`);
         return;
     }
 
     if (item.key === 'crafting-booster' && !state.craftingUnlocked) {
-        emit(io, { type: 'status', text: 'Crafting Booster requires crafting to be unlocked first (prestige 1).' });
+        status('Crafting Booster requires crafting to be unlocked first (prestige 1).');
         return;
     }
 
     if (item.key === 'enchanters-spark' && !state.enchantmentsUnlocked) {
-        emit(io, { type: 'status', text: "Enchanter's Spark requires enchantments to be unlocked first (prestige 3)." });
+        status("Enchanter's Spark requires enchantments to be unlocked first (prestige 3).");
         return;
     }
 
     const space = state.inventoryCap - state.inventory.length;
     if (space < quantity) {
-        emit(io, { type: 'status', text: `Not enough inventory space (room for ${space}, need ${quantity}).` });
+        status(`Not enough inventory space (room for ${space}, need ${quantity}).`);
         return;
     }
 
     const totalCost = unitCost * quantity;
     if (state.gold < totalCost) {
-        emit(io, { type: 'status', text: `Not enough gold for ${quantity}x ${item.name}.` });
+        status(`Not enough gold for ${quantity}x ${item.name}.`);
         return;
     }
     state.gold -= totalCost;
@@ -2041,16 +2057,20 @@ async function handleBuy(io: Server, state: PlayerState, args: string[]) {
         });
     }
     const qtyText = quantity > 1 ? `${quantity}x ` : '';
-    emit(io, { type: 'status', text: `${state.username} bought ${qtyText}${item.name} for ${totalCost}g.` });
+    status(`${state.username} bought ${qtyText}${item.name} for ${totalCost}g.`);
     emit(io, { type: 'inventory', state: ensurePublic(state) });
-    pushLog(io, `${state.username} bought ${quantity}x ${item.name} for ${totalCost}g.`);
+    log(`${state.username} bought ${quantity}x ${item.name} for ${totalCost}g.`);
 }
 
-async function handleSell(io: Server, state: PlayerState, args: string[]) {
+async function handleSell(io: Server, state: PlayerState, args: string[], fromPanel = false) {
+    const status = (text: string) => emitStatus(io, text, { panelOnly: fromPanel, user: state.username });
+    const log = (line: string) => {
+        if (!fromPanel) pushLog(io, line);
+    };
     refreshInteractionLock(io, state);
 
     if (state.inventory.length === 0) {
-        emit(io, { type: 'status', text: `${state.username} has nothing to sell.` });
+        status(`${state.username} has nothing to sell.`);
         return;
     }
 
@@ -2060,9 +2080,9 @@ async function handleSell(io: Server, state: PlayerState, args: string[]) {
         state.gold += total;
         state.inventory = [];
         emit(io, { type: 'sell', gold: total, count });
-        emit(io, { type: 'status', text: `${state.username} sold all (${count}) items for ${total}g.` });
+        status(`${state.username} sold all (${count}) items for ${total}g.`);
         emit(io, { type: 'inventory', state: ensurePublic(state) });
-        pushLog(io, `${state.username} sold all (${count}) items for ${total}g.`);
+        log(`${state.username} sold all (${count}) items for ${total}g.`);
         return;
     }
 
@@ -2079,15 +2099,15 @@ async function handleSell(io: Server, state: PlayerState, args: string[]) {
     }
 
     if (!sold) {
-        emit(io, { type: 'status', text: 'No item sold.' });
+        status('No item sold.');
         return;
     }
 
     state.gold += sold.value;
     emit(io, { type: 'sell', gold: sold.value, item: sold });
-    emit(io, { type: 'status', text: `${state.username} sold ${sold.name} for ${sold.value}g.` });
+    status(`${state.username} sold ${sold.name} for ${sold.value}g.`);
     emit(io, { type: 'inventory', state: ensurePublic(state) });
-    pushLog(io, `${state.username} sold ${sold.name} for ${sold.value}g.`);
+    log(`${state.username} sold ${sold.name} for ${sold.value}g.`);
 }
 
 async function handleSave(io: Server, state: PlayerState) {
@@ -2222,16 +2242,20 @@ async function handleDuplicate(io: Server, state: PlayerState, args: string[]) {
     emit(io, { type: 'status', text: 'Usage: !duplicate item <item name> | !duplicate material <id>' });
 }
 
-async function handleUse(io: Server, state: PlayerState, args: string[]) {
+async function handleUse(io: Server, state: PlayerState, args: string[], fromPanel = false) {
+    const status = (text: string) => emitStatus(io, text, { panelOnly: fromPanel, user: state.username });
+    const log = (line: string) => {
+        if (!fromPanel) pushLog(io, line);
+    };
     refreshInteractionLock(io, state);
 
     if (!args.length) {
-        emit(io, { type: 'status', text: 'Usage: !use <item> (or !use help)' });
+        status('Usage: !use <item> (or !use help)');
         return;
     }
 
     if (state.inventory.length === 0) {
-        emit(io, { type: 'status', text: `${state.username} has nothing to use.` });
+        status(`${state.username} has nothing to use.`);
         return;
     }
 
@@ -2242,10 +2266,10 @@ async function handleUse(io: Server, state: PlayerState, args: string[]) {
             return t === 'bait' || t === 'upgrade' || t === 'chest' || t === 'token' || t === 'compass' || t === 'map' || t === 'scroll';
         }).map((i) => i.name);
         if (usable.length === 0) {
-            emit(io, { type: 'status', text: 'No usable items right now. Catch or buy more items first.' });
+            status('No usable items right now. Catch or buy more items first.');
         } else {
             const unique = Array.from(new Set(usable)).slice(0, 12);
-            emit(io, { type: 'status', text: `Usable items: ${unique.join(', ')}` });
+            status(`Usable items: ${unique.join(', ')}`);
         }
         return;
     }
@@ -2253,11 +2277,11 @@ async function handleUse(io: Server, state: PlayerState, args: string[]) {
     // Scroll syntax: !use scroll <rarity> <custom item name>
     if (firstArg === 'scroll') {
         if ((state.prestigeCount ?? 0) < 4) {
-            emit(io, { type: 'status', text: 'Custom loot scrolls require prestige 4.' });
+            status('Custom loot scrolls require prestige 4.');
             return;
         }
         if (args.length < 3) {
-            emit(io, { type: 'status', text: 'Usage: !use scroll <rarity> <item name>' });
+            status('Usage: !use scroll <rarity> <item name>');
             return;
         }
         const rarityArg = args[1].toLowerCase();
@@ -2272,13 +2296,13 @@ async function handleUse(io: Server, state: PlayerState, args: string[]) {
         };
         const targetRarity = validRarity[rarityArg];
         if (!targetRarity) {
-            emit(io, { type: 'status', text: 'Rarity must be common/uncommon/rare/epic/legendary/mythic/relic.' });
+            status('Rarity must be common/uncommon/rare/epic/legendary/mythic/relic.');
             return;
         }
         const customName = args.slice(2).join(' ');
         const scrollIdx = state.inventory.findIndex((i) => i.type === 'scroll' && i.rarity === targetRarity);
         if (scrollIdx < 0) {
-            emit(io, { type: 'status', text: `No scroll for rarity ${targetRarity} available.` });
+            status(`No scroll for rarity ${targetRarity} available.`);
             return;
         }
         const result = addCustomLootName(targetRarity, customName);
@@ -2286,12 +2310,12 @@ async function handleUse(io: Server, state: PlayerState, args: string[]) {
             const reason = result.reason === 'duplicate'
                 ? `Item '${customName}' already exists in the custom loot pool.`
                 : 'Item name is empty.';
-            emit(io, { type: 'status', text: reason });
+            status(reason);
             return;
         }
         state.inventory.splice(scrollIdx, 1);
-        emit(io, { type: 'status', text: `${state.username} inscribed '${customName}' into the ${targetRarity} loot pool.` });
-        pushLog(io, `${state.username} added custom ${targetRarity} loot: ${customName}.`);
+        status(`${state.username} inscribed '${customName}' into the ${targetRarity} loot pool.`);
+        log(`${state.username} added custom ${targetRarity} loot: ${customName}.`);
         emit(io, { type: 'inventory', state: ensurePublic(state) });
         return;
     }
@@ -2299,7 +2323,7 @@ async function handleUse(io: Server, state: PlayerState, args: string[]) {
     const query = args.join(' ').toLowerCase();
     const idx = state.inventory.findIndex((i) => i.name.toLowerCase() === query);
     if (idx < 0) {
-        emit(io, { type: 'status', text: `Item not found: ${query}` });
+        status(`Item not found: ${query}`);
         return;
     }
 
@@ -2311,9 +2335,9 @@ async function handleUse(io: Server, state: PlayerState, args: string[]) {
         state.inventory.splice(idx, 1);
         clearBait(state.scopedKey);
         state.activeBait = { rarityBonus: 0.3, valueBonus: 0.15, uses: 1, expiresAt: Date.now() + 30 * 60 * 1000 };
-        emit(io, { type: 'status', text: `${state.username} used ${item.name}: boosted rarity/value on the next cast only.` });
+        status(`${state.username} used ${item.name}: boosted rarity/value on the next cast only.`);
         emit(io, { type: 'inventory', state: ensurePublic(state) });
-        pushLog(io, `${state.username} used bait ${item.name} (next cast only).`);
+        log(`${state.username} used bait ${item.name} (next cast only).`);
         return;
     }
 
@@ -2322,9 +2346,9 @@ async function handleUse(io: Server, state: PlayerState, args: string[]) {
         const current = getBiome(state);
         const next = nextBiome(current);
         if (!next) {
-            emit(io, { type: 'status', text: `${state.username} is already in the highest waters; the compass fades.` });
+            status(`${state.username} is already in the highest waters; the compass fades.`);
             emit(io, { type: 'inventory', state: ensurePublic(state) });
-            pushLog(io, `${state.username} used an Enchanted Compass at the max biome (no effect).`);
+            log(`${state.username} used an Enchanted Compass at the max biome (no effect).`);
             return;
         }
         state.biomeKey = next.key;
@@ -2334,9 +2358,9 @@ async function handleUse(io: Server, state: PlayerState, args: string[]) {
         clearTug(state.scopedKey);
         clearDecay(state.scopedKey);
         await savePlayer(state); // persist biome progression
-        emit(io, { type: 'status', text: `${state.username} used ${item.name} and sailed to ${next.name}. New waters unlocked.` });
+        status(`${state.username} used ${item.name} and sailed to ${next.name}. New waters unlocked.`);
         emit(io, { type: 'inventory', state: ensurePublic(state) });
-        pushLog(io, `${state.username} charted a course to ${next.name} using an Enchanted Compass.`);
+        log(`${state.username} charted a course to ${next.name} using an Enchanted Compass.`);
         return;
     }
 
@@ -2369,15 +2393,12 @@ async function handleUse(io: Server, state: PlayerState, args: string[]) {
             state.gold += cacheItem.value;
         }
 
-        emit(io, {
-            type: 'status',
-            text: `${state.username} followed the Treasure Map and uncovered a ${cacheItem.rarity} ${cacheItem.name} (+${stashBonusGold}g, +${stashBonusXp}xp).`,
-        });
+        status(`${state.username} followed the Treasure Map and uncovered a ${cacheItem.rarity} ${cacheItem.name} (+${stashBonusGold}g, +${stashBonusXp}xp).`);
         emit(io, { type: 'inventory', state: ensurePublic(state) });
         if (levelUps.length > 0) {
             emit(io, { type: 'level', level: state.level, xp: state.xp, xpNeeded: state.xpNeeded });
         }
-        pushLog(io, `${state.username} used a Treasure Map and found ${cacheItem.rarity} ${cacheItem.name} (+${stashBonusGold}g, +${stashBonusXp}xp${stored ? '' : ', auto-sold (full bag)'}).`);
+        log(`${state.username} used a Treasure Map and found ${cacheItem.rarity} ${cacheItem.name} (+${stashBonusGold}g, +${stashBonusXp}xp${stored ? '' : ', auto-sold (full bag)'}).`);
         return;
     }
 
@@ -2385,12 +2406,12 @@ async function handleUse(io: Server, state: PlayerState, args: string[]) {
         // Fallback for legacy upgrade items: treat as a small XP boost
         state.inventory.splice(idx, 1);
         const levelUps = grantXp(state, 20);
-        emit(io, { type: 'status', text: `${state.username} used ${item.name}: gained 20xp.` });
+        status(`${state.username} used ${item.name}: gained 20xp.`);
         emit(io, { type: 'inventory', state: ensurePublic(state) });
         if (levelUps.length > 0) {
             emit(io, { type: 'level', level: state.level, xp: state.xp, xpNeeded: state.xpNeeded });
         }
-        pushLog(io, `${state.username} used upgrade ${item.name} (+20xp).`);
+        log(`${state.username} used upgrade ${item.name} (+20xp).`);
         return;
     }
 
@@ -2417,14 +2438,14 @@ async function handleUse(io: Server, state: PlayerState, args: string[]) {
         const reward = makeItem(target, 1 + (state.level - 1) * 0.03, biome);
         if (state.inventory.length >= state.inventoryCap) {
             state.gold += reward.value;
-            emit(io, { type: 'status', text: `${state.username} opened ${item.name} but inventory was full; auto-sold ${reward.name} for ${reward.value}g.` });
+            status(`${state.username} opened ${item.name} but inventory was full; auto-sold ${reward.name} for ${reward.value}g.`);
             emit(io, { type: 'inventory', state: ensurePublic(state) });
-            pushLog(io, `${state.username} opened ${item.name} (auto-sold ${reward.name} for ${reward.value}g, full inventory).`);
+            log(`${state.username} opened ${item.name} (auto-sold ${reward.name} for ${reward.value}g, full inventory).`);
         } else {
             state.inventory.push(reward);
-            emit(io, { type: 'status', text: `${state.username} opened ${item.name} and found a ${reward.rarity} ${reward.name}.` });
+            status(`${state.username} opened ${item.name} and found a ${reward.rarity} ${reward.name}.`);
             emit(io, { type: 'inventory', state: ensurePublic(state) });
-            pushLog(io, `${state.username} opened ${item.name} -> ${reward.rarity} ${reward.name}.`);
+            log(`${state.username} opened ${item.name} -> ${reward.rarity} ${reward.name}.`);
         }
         return;
     }
@@ -2435,41 +2456,41 @@ async function handleUse(io: Server, state: PlayerState, args: string[]) {
 
         if (name === 'hook stabilizer') {
             state.stabilizerCharges = (state.stabilizerCharges ?? 0) + 1;
-            emit(io, { type: 'status', text: `${state.username} readied a Hook Stabilizer: first early reel will be forgiven.` });
-            pushLog(io, `${state.username} primed a Hook Stabilizer (1 early reel forgiveness).`);
+            status(`${state.username} readied a Hook Stabilizer: first early reel will be forgiven.`);
+            log(`${state.username} primed a Hook Stabilizer (1 early reel forgiveness).`);
             emit(io, { type: 'inventory', state: ensurePublic(state) });
             return;
         }
 
         if (name === 'tide token') {
             state.activeBait = { rarityBonus: 0, valueBonus: 0, uses: 1, expiresAt: Date.now() + 30 * 60 * 1000, minRarityIndex: rarityOrder.indexOf('uncommon') } as any;
-            emit(io, { type: 'status', text: `${state.username} used a Tide Token: next catch is guaranteed uncommon+.` });
+            status(`${state.username} used a Tide Token: next catch is guaranteed uncommon+.`);
             emit(io, { type: 'inventory', state: ensurePublic(state) });
-            pushLog(io, `${state.username} primed a Tide Token (min rarity uncommon).`);
+            log(`${state.username} primed a Tide Token (min rarity uncommon).`);
             return;
         }
 
         if (name === 'gleam polish') {
             state.activeBait = { rarityBonus: 0, valueBonus: 0.4, uses: 1, expiresAt: Date.now() + 30 * 60 * 1000 } as any;
-            emit(io, { type: 'status', text: `${state.username} applied Gleam Polish: +40% value on next catch.` });
+            status(`${state.username} applied Gleam Polish: +40% value on next catch.`);
             emit(io, { type: 'inventory', state: ensurePublic(state) });
-            pushLog(io, `${state.username} primed Gleam Polish (+40% value next catch).`);
+            log(`${state.username} primed Gleam Polish (+40% value next catch).`);
             return;
         }
 
         if (name === "scholar's note") {
             state.activeBait = { rarityBonus: 0, valueBonus: 0, xpBonus: 0.5, uses: 1, expiresAt: Date.now() + 30 * 60 * 1000 } as any;
-            emit(io, { type: 'status', text: `${state.username} studied a Scholar's Note: +50% XP on next catch.` });
+            status(`${state.username} studied a Scholar's Note: +50% XP on next catch.`);
             emit(io, { type: 'inventory', state: ensurePublic(state) });
-            pushLog(io, `${state.username} primed Scholar's Note (+50% XP next catch).`);
+            log(`${state.username} primed Scholar's Note (+50% XP next catch).`);
             return;
         }
 
         if (name === 'echo reel') {
             state.echoReelCharges = (state.echoReelCharges ?? 0) + 1;
-            emit(io, { type: 'status', text: `${state.username} prepped an Echo Reel: next success triggers a bonus catch.` });
+            status(`${state.username} prepped an Echo Reel: next success triggers a bonus catch.`);
             emit(io, { type: 'inventory', state: ensurePublic(state) });
-            pushLog(io, `${state.username} primed an Echo Reel (bonus catch ready).`);
+            log(`${state.username} primed an Echo Reel (bonus catch ready).`);
             return;
         }
 
@@ -2480,21 +2501,21 @@ async function handleUse(io: Server, state: PlayerState, args: string[]) {
             state.activeCharm = { expiresAt, rarityBonus: 0.08, xpBonus: 0.05 };
             const timer = setTimeout(() => {
                 clearCharm(io, state);
-                emit(io, { type: 'status', text: `${state.username}'s luck charm faded.` });
+                status(`${state.username}'s luck charm faded.`);
             }, durationMs);
             charmTimers.set(state.scopedKey, timer);
             emitBuffs(io, state);
-            emit(io, { type: 'status', text: `${state.username} used a Luck Charm: better rarity for 3m.` });
+            status(`${state.username} used a Luck Charm: better rarity for 3m.`);
             emit(io, { type: 'inventory', state: ensurePublic(state) });
-            pushLog(io, `${state.username} activated a Luck Charm (3m rarity boost).`);
+            log(`${state.username} activated a Luck Charm (3m rarity boost).`);
             return;
         }
 
         if (name === "trader's mark") {
             addTimedBuff(state, 'value', 0.15, 5 * 60 * 1000, valueBuffTimers, io, `${state.username}'s Trader's Mark faded.`);
-            emit(io, { type: 'status', text: `${state.username} used Trader's Mark: +15% value for 5m.` });
+            status(`${state.username} used Trader's Mark: +15% value for 5m.`);
             emit(io, { type: 'inventory', state: ensurePublic(state) });
-            pushLog(io, `${state.username} activated Trader's Mark (+15% value, 5m).`);
+            log(`${state.username} activated Trader's Mark (+15% value, 5m).`);
             return;
         }
 
@@ -2503,7 +2524,7 @@ async function handleUse(io: Server, state: PlayerState, args: string[]) {
             const { byTier } = getBiomeData();
             const prev = byTier.find((b) => b.tier === current.tier - 1);
             if (!prev) {
-                emit(io, { type: 'status', text: `${state.username} is already at the starting waters.` });
+                status(`${state.username} is already at the starting waters.`);
             } else {
                 state.biomeKey = prev.key;
                 state.biome = prev.key;
@@ -2512,8 +2533,8 @@ async function handleUse(io: Server, state: PlayerState, args: string[]) {
                 clearTug(state.scopedKey);
                 clearDecay(state.scopedKey);
                 await savePlayer(state); // persist biome change when sailing back
-                emit(io, { type: 'status', text: `${state.username} sailed to ${prev.name} using a Waypoint Charter.` });
-                pushLog(io, `${state.username} sailed down to ${prev.name} (Waypoint Charter).`);
+                status(`${state.username} sailed to ${prev.name} using a Waypoint Charter.`);
+                log(`${state.username} sailed down to ${prev.name} (Waypoint Charter).`);
             }
             emit(io, { type: 'inventory', state: ensurePublic(state) });
             return;
@@ -2521,41 +2542,41 @@ async function handleUse(io: Server, state: PlayerState, args: string[]) {
 
         if (name === 'survey beacon') {
             state.activeBait = { rarityBonus: 0.5, valueBonus: 0.1, uses: 1, expiresAt: Date.now() + 30 * 60 * 1000 } as any;
-            emit(io, { type: 'status', text: `${state.username} deployed a Survey Beacon: boosted odds and value on next catch.` });
+            status(`${state.username} deployed a Survey Beacon: boosted odds and value on next catch.`);
             emit(io, { type: 'inventory', state: ensurePublic(state) });
-            pushLog(io, `${state.username} primed a Survey Beacon (next catch boosted).`);
+            log(`${state.username} primed a Survey Beacon (next catch boosted).`);
             return;
         }
 
         if (name === 'chest key') {
             state.chestUpgrade = true;
-            emit(io, { type: 'status', text: `${state.username} readied a Chest Key: next chest opens one tier higher.` });
+            status(`${state.username} readied a Chest Key: next chest opens one tier higher.`);
             emit(io, { type: 'inventory', state: ensurePublic(state) });
-            pushLog(io, `${state.username} prepped a Chest Key (upgrade next chest).`);
+            log(`${state.username} prepped a Chest Key (upgrade next chest).`);
             return;
         }
 
         if (name === "prospector's lens") {
             state.chestMinRarityIndex = rarityOrder.indexOf('epic');
-            emit(io, { type: 'status', text: `${state.username} polished a Prospector's Lens: next chest is epic+.` });
+            status(`${state.username} polished a Prospector's Lens: next chest is epic+.`);
             emit(io, { type: 'inventory', state: ensurePublic(state) });
-            pushLog(io, `${state.username} primed a Prospector's Lens (min epic chest).`);
+            log(`${state.username} primed a Prospector's Lens (min epic chest).`);
             return;
         }
 
         if (name === 'crafting booster kit') {
             state.craftingBoostCharges = (state.craftingBoostCharges ?? 0) + 1;
-            emit(io, { type: 'status', text: `${state.username} stored a Crafting Booster Kit. Applies to the next craft (once crafting is used).` });
+            status(`${state.username} stored a Crafting Booster Kit. Applies to the next craft (once crafting is used).`);
             emit(io, { type: 'inventory', state: ensurePublic(state) });
-            pushLog(io, `${state.username} saved a Crafting Booster Kit.`);
+            log(`${state.username} saved a Crafting Booster Kit.`);
             return;
         }
 
         if (name === "enchanter's spark") {
             state.enchantBoostCharges = (state.enchantBoostCharges ?? 0) + 1;
-            emit(io, { type: 'status', text: `${state.username} bottled an Enchanter's Spark. Applies to the next enchant (once used).` });
+            status(`${state.username} bottled an Enchanter's Spark. Applies to the next enchant (once used).`);
             emit(io, { type: 'inventory', state: ensurePublic(state) });
-            pushLog(io, `${state.username} saved an Enchanter's Spark.`);
+            log(`${state.username} saved an Enchanter's Spark.`);
             return;
         }
 
@@ -2566,17 +2587,17 @@ async function handleUse(io: Server, state: PlayerState, args: string[]) {
         state.activeCharm = { expiresAt, rarityBonus: 0.1, xpBonus: 0.1 };
         const timer = setTimeout(() => {
             clearCharm(io, state);
-            emit(io, { type: 'status', text: `${state.username}'s luck boost faded.` });
+            status(`${state.username}'s luck boost faded.`);
         }, durationMs);
         charmTimers.set(state.scopedKey, timer);
         emitBuffs(io, state);
-        emit(io, { type: 'status', text: `${state.username} used ${item.name}: luck/rarity boost for 2m.` });
+        status(`${state.username} used ${item.name}: luck/rarity boost for 2m.`);
         emit(io, { type: 'inventory', state: ensurePublic(state) });
-        pushLog(io, `${state.username} used ${item.name} (2m luck boost).`);
+        log(`${state.username} used ${item.name} (2m luck boost).`);
         return;
     }
 
-    emit(io, { type: 'status', text: `Can't use ${item.name}.` });
+    status(`Can't use ${item.name}.`);
 }
 
 async function handleLevel(io: Server, state: PlayerState) {
@@ -2873,25 +2894,25 @@ export async function processChatCommand(io: Server, payload: ChatCommandEvent &
             lastCommandAt.set(scopedKey, Date.now());
             break;
         case 'store':
-            await handleStore(io, state);
+            await handleStore(io, state, fromPanel);
             break;
         case 'store-refresh':
-            await handleStoreRefresh(io, state);
+            await handleStoreRefresh(io, state, fromPanel);
             break;
         case 'buy':
-            await handleBuy(io, state, args);
+            await handleBuy(io, state, args, fromPanel);
             break;
         case 'upgrades':
-            await handleUpgrades(io, state);
+            await handleUpgrades(io, state, fromPanel);
             break;
         case 'sell':
-            await handleSell(io, state, args);
+            await handleSell(io, state, args, fromPanel);
             break;
         case 'use':
-            await handleUse(io, state, args);
+            await handleUse(io, state, args, fromPanel);
             break;
         case 'inventory':
-            await handleInventory(io, state);
+            await handleInventory(io, state, fromPanel);
             break;
         case 'save':
             await handleSave(io, state);
