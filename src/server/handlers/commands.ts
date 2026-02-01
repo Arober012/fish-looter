@@ -1586,7 +1586,7 @@ async function handleCast(io: Server, state: PlayerState, channel: string, sendC
             // Delay chat prompt to better align with overlay tug state and account for stream/player latency
             setTimeout(() => {
                 sendChat(`@${state.username} tug! Type !reel to pull it in.`).catch(() => undefined);
-            }, 2700);
+            }, 3200);
         }
         // Give players a generous window after seeing the tug to handle stream delay
         scheduleDecay(tugResponseWindowMs);
