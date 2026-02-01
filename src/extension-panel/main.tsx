@@ -379,7 +379,9 @@ function App() {
           if (evt.state && isMyEvent(evt.state.username)) {
             setMyUser(evt.state.username);
             setState(evt.state);
-            setStatus('Inventory updated');
+            if (evt.locked?.reason) {
+              setStatus(evt.locked.reason);
+            }
           }
           break;
         case 'sell': {
