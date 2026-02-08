@@ -14,10 +14,21 @@ export type ChannelRecord = {
 
 const storePath = resolveInDataDir('channels.json');
 
+function normalizeLogin(login: string | undefined): string {
+    return (login || '').replace(/^#/, '').toLowerCase();
+}
+
+function sanitizeRecord(rec: ChannelRecord): ChannelRecord {
+    const login = normalizeLogin(rec.login);
+    const channelId = rec.channelId || login;
+    return { ...rec, login, channelId };
+}
+
 async function readStore(): Promise<ChannelRecord[]> {
     try {
         const raw = await fs.readFile(storePath, 'utf8');
-        return JSON.parse(raw) as ChannelRecord[];
+        const parsed = JSON.parse(raw) as ChannelRecord[];
+        return parsed.map(sanitizeRecord);
     } catch (err: any) {
         if (err?.code === 'ENOENT') return [];
         throw err;
@@ -26,14 +37,16 @@ async function readStore(): Promise<ChannelRecord[]> {
 
 async function writeStore(records: ChannelRecord[]) {
     await fs.mkdir(path.dirname(storePath), { recursive: true });
-    await fs.writeFile(storePath, JSON.stringify(records, null, 2), 'utf8');
+    const sanitized = records.map(sanitizeRecord);
+    await fs.writeFile(storePath, JSON.stringify(sanitized, null, 2), 'utf8');
 }
 
 export async function upsertChannel(rec: ChannelRecord): Promise<void> {
     const records = await readStore();
-    const existing = records.find((r) => r.channelId === rec.channelId || r.login.toLowerCase() === rec.login.toLowerCase());
+    const normalized = sanitizeRecord(rec);
+    const existing = records.find((r) => r.channelId === normalized.channelId || normalizeLogin(r.login) === normalized.login);
     const now = Date.now();
-    const next: ChannelRecord = { ...rec, updatedAt: now };
+    const next: ChannelRecord = { ...normalized, updatedAt: now };
     if (existing) {
         Object.assign(existing, next);
     } else {
@@ -44,7 +57,8 @@ export async function upsertChannel(rec: ChannelRecord): Promise<void> {
 
 export async function getChannelByLogin(login: string): Promise<ChannelRecord | null> {
     const records = await readStore();
-    return records.find((r) => r.login.toLowerCase() === login.toLowerCase()) ?? null;
+    const target = normalizeLogin(login);
+    return records.find((r) => r.login === target) ?? null;
 }
 
 export async function getChannelById(channelId: string): Promise<ChannelRecord | null> {

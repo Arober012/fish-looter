@@ -9,12 +9,15 @@ type ConnectedClient = {
     authMode: 'oauth' | 'anonymous';
 };
 
+const normalizeChan = (login: string): string => login.replace(/^#/, '').toLowerCase();
+
 export class ChatBridge {
     private io: Server;
     private onChatCommand: (io: Server, payload: ChatCommandEvent, sendChat?: (message: string) => Promise<void>) => void | Promise<void>;
     private clients: Map<string, ConnectedClient> = new Map(); // channel -> client
     private channelRecords: Map<string, ChannelRecord> = new Map();
     private reconnectTimers: Map<string, NodeJS.Timeout> = new Map();
+    private connecting: Set<string> = new Set();
 
     constructor(io: Server, onChatCommand: (io: Server, payload: ChatCommandEvent, sendChat?: (message: string) => Promise<void>) => void | Promise<void>) {
         this.io = io;
@@ -28,7 +31,7 @@ export class ChatBridge {
     }
 
     private scheduleReconnect(record: ChannelRecord, reason: string, delayMs = 5000) {
-        const chan = record.login.toLowerCase();
+        const chan = normalizeChan(record.login);
         if (this.reconnectTimers.has(chan)) return; // already scheduled
         console.warn(`[twitch] Reconnecting to #${chan} in ${delayMs}ms (${reason})`);
         const timer = setTimeout(async () => {
@@ -106,9 +109,10 @@ export class ChatBridge {
     }
 
     async addChannel(record: ChannelRecord) {
-        const chan = record.login.toLowerCase();
-        this.channelRecords.set(chan, record);
-        if (this.clients.has(chan)) return; // already connected
+        const chan = normalizeChan(record.login);
+        this.channelRecords.set(chan, { ...record, login: chan });
+        if (this.clients.has(chan) || this.connecting.has(chan)) return; // already connected or in-flight
+        this.connecting.add(chan);
 
         let effectiveRecord = record;
         const hasAuth = Boolean(record.botAccessToken);
@@ -131,7 +135,7 @@ export class ChatBridge {
             console.warn(`[twitch] No bot token for #${chan}; connecting anonymously (read-only)`);
         }
 
-        const username = effectiveRecord.login;
+        const username = normalizeChan(effectiveRecord.login);
         const oauth = effectiveRecord.botAccessToken
             ? effectiveRecord.botAccessToken.startsWith('oauth:')
                 ? effectiveRecord.botAccessToken
@@ -166,14 +170,14 @@ export class ChatBridge {
             const authProblem = message.toLowerCase().includes('authentication failed') || message.toLowerCase().includes('login authentication failed');
             if (authProblem) {
                 this.clients.delete(chan);
-                this.scheduleReconnect(effectiveRecord, 'auth notice');
+                this.scheduleReconnect({ ...effectiveRecord, login: chan }, 'auth notice');
             }
         });
 
         client.on('disconnected', (reason: string) => {
             console.warn(`[twitch] Disconnected from #${chan}: ${reason}`);
             this.clients.delete(chan);
-            this.scheduleReconnect(effectiveRecord, reason || 'disconnected');
+            this.scheduleReconnect({ ...effectiveRecord, login: chan }, reason || 'disconnected');
         });
 
         client.on('message', (_channel: string, tags: ChatUserstate, message: string, self: boolean) => {
@@ -209,12 +213,14 @@ export class ChatBridge {
             this.clients.set(chan, { channel: chan, client, authMode });
         } catch (err) {
             console.error(`[twitch] Connection failed for #${chan}`, err);
-            this.scheduleReconnect(effectiveRecord, 'initial connect failed', 7500);
+            this.scheduleReconnect({ ...effectiveRecord, login: chan }, 'initial connect failed', 7500);
+        } finally {
+            this.connecting.delete(chan);
         }
     }
 
     async ensureConnected(record: ChannelRecord) {
-        const chan = record.login.toLowerCase();
+        const chan = normalizeChan(record.login);
         const existing = this.clients.get(chan);
         if (!existing) {
             return this.addChannel(record);
@@ -232,7 +238,8 @@ export class ChatBridge {
     }
 
     async say(channel: string, message: string) {
-        const entry = this.clients.get(channel);
+        const key = normalizeChan(channel);
+        const entry = this.clients.get(key);
         if (!entry) throw new Error(`Not connected to #${channel}`);
         if (entry.authMode !== 'oauth') throw new Error(`Bot is not authenticated to speak in #${channel}`);
         const target = channel.startsWith('#') ? channel : `#${channel}`;
