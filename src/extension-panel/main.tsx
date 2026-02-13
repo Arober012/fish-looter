@@ -12,6 +12,7 @@ declare global {
 
 const apiBase = ((import.meta as any)?.env?.VITE_API_BASE || '').replace(/\/$/, '');
 const socketUrl = ((import.meta as any)?.env?.VITE_SOCKET_URL || apiBase || window.location.origin).replace(/\/$/, '');
+const adminLogin = (((import.meta as any)?.env?.VITE_ADMIN_LOGIN) || '').toLowerCase();
 
 function apiUrl(path: string) {
   const safePath = path.startsWith('/') ? path : `/${path}`;
@@ -181,6 +182,10 @@ function App() {
   const [accentColor, setAccentColor] = useState<string>('#7ad7ff');
   const [showLoginPreview, setShowLoginPreview] = useState<boolean>(false);
   const [selectedThemeId, setSelectedThemeId] = useState<string>('');
+  const isAdmin = useMemo(() => {
+    const me = (session?.login || session?.displayName || '').toLowerCase();
+    return Boolean(adminLogin && me && me === adminLogin);
+  }, [session]);
   const [selectedPaletteId, setSelectedPaletteId] = useState<string>('');
 
   const tabs: Array<{ key: typeof activeTab; label: string }> = [
@@ -518,6 +523,29 @@ function App() {
     }
   };
 
+  const runAdminCleanup = async () => {
+    if (!isAdmin) return;
+    setLoading(true);
+    try {
+      const res = await fetch(apiUrl('/api/admin/chat/cleanup'), {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const msg = await res.text();
+        throw new Error(msg || 'Cleanup failed');
+      }
+      const data = await res.json().catch(() => ({} as any));
+      const removed = Array.isArray((data as any).removed) ? (data as any).removed.length : 0;
+      setStatus(`Cleanup complete — removed ${removed} entries`);
+      await refresh('Synced after cleanup');
+    } catch (err: any) {
+      setStatus(err?.message || 'Admin cleanup failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const usableItems = useMemo(() => {
     if (!state) return [] as PlayerStatePublic['inventory'];
     const usableTypes = new Set(['token', 'bait', 'chest', 'compass', 'map', 'scroll', 'upgrade']);
@@ -840,11 +868,15 @@ function App() {
             </div>
             <div className="header-actions">
               {devMode && <span className="pill pill-dev">Dev mode</span>}
+              {isAdmin && <span className="pill pill-dev">Admin</span>}
               {!devMode && session && (
                 <>
                   <button className="ghost" disabled={loading} onClick={reauth}>Re-auth</button>
                   <button className="ghost" disabled={loading} onClick={logout}>Logout</button>
                 </>
+              )}
+              {isAdmin && (
+                <button className="ghost" disabled={loading} onClick={runAdminCleanup}>Cleanup chat links</button>
               )}
               <button className="ghost" disabled={loading} onClick={() => window.open(apiUrl('/api/auth/login'), '_blank')}>View auth</button>
               <button className="ghost" onClick={() => setShowLoginPreview(true)}>Preview login</button>

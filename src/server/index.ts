@@ -51,6 +51,8 @@ const allowedOrigins = [
     'http://localhost:5175',
 ];
 
+const adminLogin = (process.env.PANEL_ADMIN_LOGIN || '').toLowerCase();
+
 const io = new Server(server, { cors: { origin: allowedOrigins, credentials: true } });
 
 // Default to a non-conflicting port; override with PORT env when needed
@@ -243,6 +245,19 @@ app.post('/api/debug/storage/cleanup', requireSession, async (_req: Request, res
     // Requires an authenticated session to avoid random callers deleting state.
     const result = await cleanupChannels();
     res.json({ ok: true, ...result });
+});
+
+app.post('/api/admin/chat/cleanup', requireSession, async (req: Request, res: Response) => {
+    const sessionLogin = req.session?.login?.toLowerCase();
+    if (!adminLogin || !sessionLogin || sessionLogin !== adminLogin) {
+        return res.status(403).json({ ok: false, error: 'Forbidden' });
+    }
+
+    const result = await cleanupChannels();
+    const records = await listChannels();
+    await Promise.all(records.map((rec) => chatBridge.ensureConnected(rec)));
+
+    res.json({ ok: true, ...result, connected: chatBridge.getStatus() });
 });
 
 app.get('/api/debug/twitch', async (_req: Request, res: Response) => {
