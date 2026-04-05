@@ -884,8 +884,10 @@ const valueBuffTimers = new Map<string, TimedBuff[]>();
 let themeSent = false;
 const lastCommandAt = new Map<string, number>();
 const lastGlobalCommandAt = new Map<string, number>();
+const panelLinkLastSentAt = new Map<string, number>();
 const DEFAULT_USER_COOLDOWN_MS = 6 * 1000;
 const DEFAULT_GLOBAL_COOLDOWN_MS = 8 * 1000;
+const panelLinkCooldownMs = 10 * 1000;
 let userCommandCooldownMs = DEFAULT_USER_COOLDOWN_MS;
 let globalCommandCooldownMs = DEFAULT_GLOBAL_COOLDOWN_MS;
 const interactionTimeoutMs = 25 * 1000;
@@ -2827,6 +2829,13 @@ export async function processChatCommand(io: Server, payload: ChatCommandEvent &
     const isSessionCommand = command === 'store' || command === 'upgrades' || command === 'inventory' || command === 'buy' || command === 'sell' || command === 'use';
     const isChatOrigin = !fromPanel;
 
+    if (process.env.CHAT_DIAGNOSTICS === 'true' && (command === 'panel' || rawCommand === 'panel')) {
+        const argText = args.length ? args.join(' ') : '-';
+        console.log(
+            `[diag-command] pid=${process.pid} origin=${fromPanel ? 'panel-api' : 'chat'} chan=${chan} user=${username.toLowerCase()} raw=${rawCommand} resolved=${command} args=${argText} hasSendChat=${Boolean(sendChat)}`
+        );
+    }
+
     const lastGlobal = lastGlobalCommandAt.get(chan) ?? 0;
     const globalRemainingMs = disableGlobalCooldown ? 0 : globalCommandCooldownMs - (now - lastGlobal);
     // Only gate fishing commands (cast/reel) behind the global chat cooldown
@@ -2949,6 +2958,14 @@ export async function processChatCommand(io: Server, payload: ChatCommandEvent &
         case 'panel':
             if (sendChat) {
                 try {
+                    const panelLastAt = panelLinkLastSentAt.get(chan) ?? 0;
+                    if (now - panelLastAt < panelLinkCooldownMs) {
+                        if (process.env.CHAT_DIAGNOSTICS === 'true') {
+                            console.warn(`[diag-command] panel-throttled pid=${process.pid} chan=${chan} user=${username.toLowerCase()} deltaMs=${now - panelLastAt}`);
+                        }
+                        break;
+                    }
+                    panelLinkLastSentAt.set(chan, now);
                     await sendChat('Open the panel: https://custom-overlays.com/panel');
                 } catch (err) {
                     emit(io, { type: 'status', text: `Could not post panel link to chat: ${err instanceof Error ? err.message : String(err)}` });

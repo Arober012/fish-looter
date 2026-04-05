@@ -10,6 +10,10 @@ type ConnectedClient = {
 };
 
 const normalizeChan = (login: string): string => login.replace(/^#/, '').toLowerCase();
+const chatDiagnosticsEnabled = process.env.CHAT_DIAGNOSTICS === 'true';
+const chatDiagWindowMs = 30_000;
+const duplicateMessageIdWindowMs = 90_000;
+const duplicateFingerprintWindowMs = 2_500;
 
 export class ChatBridge {
     private io: Server;
@@ -18,10 +22,26 @@ export class ChatBridge {
     private channelRecords: Map<string, ChannelRecord> = new Map();
     private reconnectTimers: Map<string, NodeJS.Timeout> = new Map();
     private connecting: Set<string> = new Set();
+    private readonly diagInstanceId = `${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
+    private recentMessageIds: Map<string, number> = new Map();
+    private recentFingerprints: Map<string, number> = new Map();
 
     constructor(io: Server, onChatCommand: (io: Server, payload: ChatCommandEvent, sendChat?: (message: string) => Promise<void>) => void | Promise<void>) {
         this.io = io;
         this.onChatCommand = onChatCommand;
+        if (chatDiagnosticsEnabled) {
+            console.log(`[diag-chat] enabled pid=${process.pid} instance=${this.diagInstanceId} windowMs=${chatDiagWindowMs}`);
+        }
+    }
+
+    private pruneDiagnostics(now: number) {
+        const cutoff = now - Math.max(chatDiagWindowMs, duplicateMessageIdWindowMs, duplicateFingerprintWindowMs);
+        for (const [id, ts] of this.recentMessageIds.entries()) {
+            if (ts < cutoff) this.recentMessageIds.delete(id);
+        }
+        for (const [fp, ts] of this.recentFingerprints.entries()) {
+            if (ts < cutoff) this.recentFingerprints.delete(fp);
+        }
     }
 
     private clearReconnectTimer(chan: string) {
@@ -188,6 +208,46 @@ export class ChatBridge {
             const [cmd, ...args] = raw.slice(1).split(/\s+/);
             const isBroadcaster = Boolean(tags.badges?.broadcaster === '1' || (chan && tags.username?.toLowerCase() === chan));
             const isMod = Boolean(tags.mod) || isBroadcaster;
+            const now = Date.now();
+            const msgId = typeof tags.id === 'string' ? tags.id : '';
+            const user = (tags.username ?? 'anon').toLowerCase();
+            const fingerprint = `${chan}|${user}|${raw.toLowerCase()}`;
+            this.pruneDiagnostics(now);
+            const prevIdTs = msgId ? this.recentMessageIds.get(msgId) : undefined;
+            const prevFpTs = this.recentFingerprints.get(fingerprint);
+
+            if (prevIdTs && now - prevIdTs <= duplicateMessageIdWindowMs) {
+                if (chatDiagnosticsEnabled) {
+                    console.warn(`[diag-chat-in] dropped-duplicate-msg-id pid=${process.pid} instance=${this.diagInstanceId} chan=#${chan} msgId=${msgId} deltaMs=${now - prevIdTs}`);
+                }
+                return;
+            }
+            if (!msgId && prevFpTs && now - prevFpTs <= duplicateFingerprintWindowMs) {
+                if (chatDiagnosticsEnabled) {
+                    console.warn(`[diag-chat-in] dropped-duplicate-fingerprint pid=${process.pid} instance=${this.diagInstanceId} chan=#${chan} user=${user} deltaMs=${now - prevFpTs} command=${cmd.toLowerCase()}`);
+                }
+                return;
+            }
+
+            if (msgId) this.recentMessageIds.set(msgId, now);
+            this.recentFingerprints.set(fingerprint, now);
+
+            if (chatDiagnosticsEnabled) {
+                const sinceId = prevIdTs ? now - prevIdTs : -1;
+                const sinceFp = prevFpTs ? now - prevFpTs : -1;
+
+                console.log(
+                    `[diag-chat-in] pid=${process.pid} instance=${this.diagInstanceId} chan=#${chan} msgId=${msgId || '-'} user=${user} command=${cmd.toLowerCase()} args=${args.join(' ')} sinceSameIdMs=${sinceId >= 0 ? sinceId : '-'} sinceSameFingerprintMs=${sinceFp >= 0 ? sinceFp : '-'} raw="${raw.replace(/"/g, '\\"')}"`
+                );
+
+                if (prevIdTs) {
+                    console.warn(`[diag-chat-in] duplicate-msg-id pid=${process.pid} instance=${this.diagInstanceId} chan=#${chan} msgId=${msgId} deltaMs=${now - prevIdTs}`);
+                }
+                if (prevFpTs) {
+                    console.warn(`[diag-chat-in] duplicate-fingerprint pid=${process.pid} instance=${this.diagInstanceId} chan=#${chan} user=${user} deltaMs=${now - prevFpTs} command=${cmd.toLowerCase()}`);
+                }
+            }
+
             const payload: ChatCommandEvent = {
                 username: tags['display-name'] ?? tags.username ?? 'anon',
                 command: cmd.toLowerCase(),
@@ -243,6 +303,11 @@ export class ChatBridge {
         if (!entry) throw new Error(`Not connected to #${channel}`);
         if (entry.authMode !== 'oauth') throw new Error(`Bot is not authenticated to speak in #${channel}`);
         const target = channel.startsWith('#') ? channel : `#${channel}`;
+        if (chatDiagnosticsEnabled) {
+            console.log(
+                `[diag-chat-out] pid=${process.pid} instance=${this.diagInstanceId} chan=${target} authMode=${entry.authMode} message="${message.replace(/"/g, '\\"')}"`
+            );
+        }
         await entry.client.say(target, message);
     }
 }
