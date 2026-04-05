@@ -538,7 +538,7 @@ const storeItems: StoreItem[] = [
     { key: 'bait-shiny', name: 'Shiny Lure', cost: 90, rarity: 'rare', value: 38, description: 'Slightly boosts rare+ odds for your next cast.', type: 'bait' },
     { key: 'bait-mystic', name: 'Mystic Bobber', cost: 160, rarity: 'epic', value: 65, description: 'Greatly boosts epic+ odds for your next cast.', type: 'bait' },
     { key: 'bait-aurora', name: 'Aurora Float', cost: 280, rarity: 'mythic', value: 120, description: 'Massively increases mythic odds for one cast.', type: 'bait' },
-    { key: 'bag-upgrade', name: 'Inventory Expansion', cost: 120, rarity: 'rare', value: 0, description: 'Increase inventory space by +5 (max 30).', type: 'item' },
+    { key: 'bag-upgrade', name: 'Inventory Expansion', cost: 120, rarity: 'rare', value: 0, description: 'Increase inventory space by +5 (max 50).', type: 'item' },
     { key: 'hook-stabilizer', name: 'Hook Stabilizer', cost: 35, rarity: 'common', value: 0, description: 'Forgives one early reel on your next cast.', type: 'token' },
     { key: 'tide-token', name: 'Tide Token', cost: 70, rarity: 'uncommon', value: 0, description: 'Next catch is guaranteed uncommon+.', type: 'token' },
     { key: 'gleam-polish', name: 'Gleam Polish', cost: 110, rarity: 'rare', value: 0, description: 'Next catch value +40%.', type: 'token' },
@@ -903,7 +903,7 @@ const eventTimers = new Map<string, NodeJS.Timeout>();
 
 const baseGoldPerCatch = 6;
 const inventoryCapBase = 15;
-const inventoryCapMax = 30;
+const inventoryCapMax = 50;
 const inventoryCapStep = 5;
 
 function ensurePublic(state: PlayerState): PlayerStatePublic {
@@ -2001,11 +2001,11 @@ async function handleBuy(io: Server, state: PlayerState, args: string[], fromPan
     if (item.key === 'bag-upgrade') {
         const remaining = Math.max(0, Math.floor((inventoryCapMax - state.inventoryCap) / inventoryCapStep));
         if (remaining <= 0) {
-            status('Inventory space is already at the max (30).');
+            status('Inventory space is already at the max (50).');
             return;
         }
         if (quantity > remaining) {
-            status(`Only ${remaining} inventory expansion${remaining === 1 ? '' : 's'} left (max 30).`);
+            status(`Only ${remaining} inventory expansion${remaining === 1 ? '' : 's'} left (max 50).`);
             return;
         }
         const totalCost = unitCost * quantity;
